@@ -12,6 +12,7 @@ import time
 def main():
     p=argparse.ArgumentParser();p.add_argument("--run",required=True);p.add_argument("--supervisor",type=int,required=True);p.add_argument("--evaluation",type=int,required=True)
     p.add_argument("--restart-rl",action="store_true");p.add_argument("--started",type=float)
+    p.add_argument("--resume-rl",action="store_true")
     args=p.parse_args()
     if not re.fullmatch(r"\d{8}-\d{6}",args.run):raise ValueError("invalid experiment ID")
     root=Path("runs")/args.run;name="kws-"+args.run
@@ -52,9 +53,18 @@ def main():
     try:
         subprocess.run([sys.executable,"-m","unittest","discover","-s","tests","-v"],check=True)
         sft=root/"checkpoints"/json.loads((root/"checkpoints/best-sft-rank0.json").read_text())["directory"]
+        resume=sft
+        if args.resume_rl:
+            for rank in range(4):
+                target=root/"checkpoints"/json.loads((root/f"checkpoints/best-rl-rank{rank}.json").read_text())["directory"]
+                link=root/f"resume-rl-rank{rank}"
+                if link.exists():link.unlink()
+                link.symlink_to(target.resolve(),target_is_directory=True)
+            resume=root/"resume-rl-rank{rank}"
         started=time.time()
         seconds=subprocess.check_output([sys.executable,"scripts/stage_limit.py","--budget",str(root/"budget.json"),"--phase","rl","--rate","4.8","--started",str(started)],text=True).strip()
-        command=["timeout","--signal=TERM","--kill-after=120",seconds,sys.executable,"-m","switching.train","--phase","rl","--resume",str(sft),"--output",str(root),"--hourly-rate","4.8","--gcs",prefix+"/checkpoints","--started",str(started)]
+        command=["timeout","--signal=TERM","--kill-after=120",seconds,sys.executable,"-m","switching.train","--phase","rl","--resume",str(resume),"--output",str(root),"--hourly-rate","4.8","--gcs",prefix+"/checkpoints","--started",str(started)]
+        if args.resume_rl:command.append("--restore-optimizer")
         print("REAL_RL_LAUNCH",json.dumps(command),flush=True)
         result=subprocess.run(command)
         (root/"rl-exit.json").write_text(json.dumps({"returncode":result.returncode,"finished":time.time()}))

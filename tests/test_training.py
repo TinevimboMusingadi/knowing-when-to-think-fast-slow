@@ -6,7 +6,7 @@ from transformers import Qwen3Config,Qwen3ForCausalLM
 from switching.model import SwitchModel,DecisionHead
 from switching.batching import pack
 from switching.storage import Checkpoints
-from switching.train import grpo_loss,advantages,memory_headroom,is_memory_exhaustion,project_training_seconds
+from switching.train import grpo_loss,advantages,memory_headroom,is_memory_exhaustion,project_training_seconds,ensure_all_gradients
 from switching.optim import DeviceAdamW
 from switching.inspect_checkpoint import inspect
 
@@ -21,6 +21,16 @@ def tiny_model():
     return SwitchModel(Qwen3ForCausalLM(config),TinyTokenizer(),rank=2,alpha=4)
 
 class TrainingTests(unittest.TestCase):
+    def test_unused_head_keeps_identical_replica_gradient_lists(self):
+        model=tiny_model();ids=torch.tensor([[2,64,3,4]])
+        model.lm(input_ids=ids,labels=ids,use_cache=False).loss.backward()
+        self.assertTrue(any(p.grad is None for p in model.head.parameters()))
+        before={n:p.grad.clone() for n,p in model.named_parameters() if p.grad is not None}
+        ensure_all_gradients(model)
+        self.assertTrue(all(p.grad is not None for p in model.parameters() if p.requires_grad))
+        self.assertTrue(all(torch.count_nonzero(p.grad)==0 for p in model.head.parameters()))
+        for n,p in model.named_parameters():
+            if n in before:torch.testing.assert_close(p.grad,before[n])
     def test_projection_separates_compilation_and_reserves_future_cost(self):
         self.assertEqual(project_training_seconds([10,11,10,10,10],100,[30,50]),1475)
         with self.assertRaises(ValueError):project_training_seconds([],100,[50])

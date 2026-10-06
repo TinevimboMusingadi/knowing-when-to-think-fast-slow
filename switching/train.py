@@ -23,6 +23,12 @@ def advantages(rewards):
     values=torch.tensor(rewards,dtype=torch.float32)
     return (values-values.mean())/(values.std(unbiased=False)+1e-6)
 
+def ensure_all_gradients(model):
+    """Replicas must reduce identical parameters even when only one head is used."""
+    for parameter in model.parameters():
+        if parameter.requires_grad and parameter.grad is None:
+            parameter.grad=torch.zeros_like(parameter)
+
 def memory_headroom(memory):
     """Support both legacy XRT and current PJRT memory counters; fail closed."""
     if "bytes_limit" in memory:
@@ -86,6 +92,7 @@ def worker(index,args):
         loss.backward()
         synchronize(device)
     def optimizer_step():
+        if xm:ensure_all_gradients(model)
         norm=torch.nn.utils.clip_grad_norm_([p for p in model.parameters() if p.requires_grad],1.0)
         norm_value=float(norm.item());finite=math.isfinite(norm_value)
         if xm:finite=xm.mesh_reduce("gradient-agreement",finite,all)
