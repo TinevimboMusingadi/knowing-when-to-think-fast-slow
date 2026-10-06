@@ -11,7 +11,10 @@ from .protocol import MODES, encode_action,parse_action
 COUNTS = {"fast": 2000, "direct": 1000, "reasoning": 2000, "reason_decide": 1000, "clarification": 1000, "lookup": 1000}
 
 def candidates(answer, rng):
-    values = [answer, answer + 1, answer + 7, answer - 3]
+    below=rng.randrange(4)
+    scale=rng.choice((1,2,5,10))
+    offsets=[-scale*v for v in rng.sample(range(1,21),below)]+[scale*v for v in rng.sample(range(1,21),3-below)]
+    values=[answer]+[answer+offset for offset in offsets]
     rng.shuffle(values)
     return [{"id": f"c{i}", "value": value, "text": str(value)} for i, value in enumerate(values)]
 
@@ -74,7 +77,7 @@ def make_episode(split, behavior, index):
         action = "ask" if behavior == "clarification" else "lookup"
         row["steps"] = [{"completion": encode_action(MODES[1], action, **({"question": "What is the record value?"} if action == "ask" else {"query": key}))}, {"completion": encode_action(MODES[0], "decide", state=f"The record value is {answer}; select its matching candidate."), "decision": answer}]
         row["clarification" if action == "ask" else "facts"] = str(answer) if action == "ask" else {key: str(answer)}
-    row["prompt"] += " Candidates: " + json.dumps(opts)
+    row["prompt"] += " Candidates: " + json.dumps(row["candidates"])
     row["optimal_actions"] = len(row["steps"])
     for step in row["steps"]:
         if "decision" in step:step["completion"]=MODES[0]
@@ -92,7 +95,8 @@ def reused_rows(source, gold_file=None):
             key=" ".join(record["question"].lower().split())
             value=record["answer"].split("####")[-1].strip().replace(",", "")
             if re.fullmatch(r"-?\d+(?:\.\d+)?",value):
-                gold[key]=(float(value), record["answer"].split("####")[0].strip())
+                reasoning=re.sub(r"<<[^>]*>>","",record["answer"].split("####")[0]).strip()
+                gold[key]=(float(value),reasoning)
     with Path(source).open(encoding="utf-8") as stream:
         for line in stream:
             audit["source_rows"] += 1

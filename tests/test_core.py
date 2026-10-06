@@ -29,6 +29,14 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(labels,{"yes","no","unknown"})
         self.assertEqual({r["answer"] for r in rows if r["question_type"]=="bounded_score"},set(range(6)))
 
+    def test_candidate_rank_is_not_an_answer_shortcut_and_display_matches(self):
+        ranks=set()
+        for index in range(200):
+            row=make_episode("train","lookup",index)
+            self.assertEqual(json.loads(row["prompt"].split(" Candidates: ")[1]),row["candidates"])
+            ranks.add(sorted(c["value"] for c in row["candidates"]).index(row["answer"]))
+        self.assertEqual(ranks,set(range(4)))
+
     def test_jev_can_continue_into_reasoning(self):
         row=make_episode("train","reasoning",2);env=EpisodeEnv(row)
         first=row["steps"][0];env.step(first["completion"],first["decision"])

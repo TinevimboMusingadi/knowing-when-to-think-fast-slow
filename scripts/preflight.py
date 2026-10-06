@@ -28,6 +28,7 @@ def audit(root):
                 # JSON actions contain plain reasoning, never operator markup.
                 for tag in re.findall(r"<([A-Za-z_][A-Za-z_0-9]*)>",step["completion"]):
                     errors.append(f"unexpected reasoning markup in {row['id']}")
+                if "<<" in step["completion"]:errors.append(f"calculator markup was not removed: {row['id']}")
         groups.append({row["group"] for row in rows})
     for i,g in enumerate(groups):
         for h in groups[i+1:]:
