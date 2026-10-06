@@ -36,6 +36,15 @@ installs pinned PyTorch/XLA 2.8 and Qwen-compatible Transformers 4.57.3 on the V
 Do not launch until local checks pass. A pilot must retain 15% memory headroom
 and projected SFT cost must fit the stage allowance.
 
+Interrupted SFT can resume from completion-marked GCS checkpoints, with one
+optimizer and random-state snapshot per replica. Recovery checks the archived
+dataset hashes before continuing. After downloading that run's budget record
+to `runs/<run-id>/budget-remote.json`, use
+`python scripts/cloud.py --launch --zone us-west4-a --resume-sft-run <run-id>`.
+Recovery retains the successful microbatch of one and skips a repeated pilot.
+The cost projection uses full optimizer updates after a twelve-update warmup;
+elapsed spending remains checked on every microbatch.
+
 New spend is limited to $50: pilot $5, SFT $20, RL $15, evaluation $5, storage $5.
 The guard uses a conservative whole-slice $4.80/hour rate and a 15% margin;
 this is an estimate, not a claim about the live Spot price or actual billing.

@@ -20,6 +20,18 @@ def tiny_model():
     return SwitchModel(Qwen3ForCausalLM(config),TinyTokenizer(),rank=2,alpha=4)
 
 class TrainingTests(unittest.TestCase):
+    def test_device_warmup_matches_reference_and_legacy_resume(self):
+        a=torch.nn.Parameter(torch.tensor([1.0]));b=torch.nn.Parameter(a.detach().clone())
+        custom=DeviceAdamW([a],lr=.01,warmup_steps=10);reference=torch.optim.AdamW([b],lr=.01)
+        for step in range(1,5):
+            a.grad=torch.tensor([.4]);b.grad=a.grad.clone();reference.param_groups[0]["lr"]=.01*step/10
+            custom.step();reference.step();torch.testing.assert_close(a,b,atol=1e-6,rtol=1e-6)
+        legacy=custom.state_dict()
+        for group in legacy["param_groups"]:group.pop("base_lr");group.pop("warmup_steps")
+        restored=DeviceAdamW([a],lr=.01,warmup_steps=10);restored.load_state_dict(legacy)
+        self.assertEqual(restored.param_groups[0]["base_lr"],.01)
+        self.assertEqual(restored.param_groups[0]["warmup_steps"],10)
+
     def test_device_adamw_matches_reference_and_restores(self):
         a=torch.nn.Parameter(torch.tensor([1.0,-2.0]));b=torch.nn.Parameter(a.detach().clone())
         custom=DeviceAdamW([a],lr=.01);reference=torch.optim.AdamW([b],lr=.01)

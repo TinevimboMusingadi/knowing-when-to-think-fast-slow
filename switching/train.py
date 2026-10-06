@@ -10,7 +10,7 @@ from .batching import pack,supervised_items
 from .model import SwitchModel
 from .optim import DeviceAdamW
 from .runtime import action_logps,rollout_group,synchronize
-from .storage import Budget,Checkpoints
+from .storage import Budget,Checkpoints,checksum
 
 def grpo_loss(new,old,reference,advantage,epsilon=.2,beta=.02):
     ratio=(new-old).exp()
@@ -58,18 +58,21 @@ def worker(index,args):
     model=SwitchModel.load(config["model"],config["lora_rank"],config["lora_alpha"],torch.bfloat16 if xm else torch.float32).to(device)
     if xm:
         model.head.to(torch.bfloat16)
-    optimizer=(DeviceAdamW if xm else torch.optim.AdamW)([p for p in model.parameters() if p.requires_grad],lr=config["rl_learning_rate"] if args.phase=="rl" else config["learning_rate"])
+    optimizer=(DeviceAdamW if xm else torch.optim.AdamW)([p for p in model.parameters() if p.requires_grad],lr=config["rl_learning_rate"] if args.phase=="rl" else config["learning_rate"],**({"warmup_steps":10} if xm else {}))
     scheduler=torch.optim.lr_scheduler.LambdaLR(optimizer,lambda step:min(1,(step+1)/10))
     root=Path(args.output); root.mkdir(parents=True,exist_ok=True)
     checkpoints=Checkpoints(root/"checkpoints",args.gcs)
-    progress={"step":0,"cursor":0,"phase":args.phase,"model":config["model"],"world_size":world}
+    data_hash=checksum(args.data)
+    progress={"step":0,"cursor":0,"phase":args.phase,"model":config["model"],"world_size":world,"data_sha256":data_hash,"validation_sha256":checksum(args.validation)}
     progress["training_config"]=config
     if rank==0:(root/"config.json").write_text(json.dumps(config,indent=2))
     if args.resume:
-        restored=checkpoints.load(args.resume,model,optimizer if args.restore_optimizer else None,scheduler if args.restore_optimizer else None)
+        restored=checkpoints.load(args.resume.replace("{rank}",str(rank)),model,optimizer if args.restore_optimizer else None,scheduler if args.restore_optimizer else None)
         if args.restore_optimizer:
             if restored["world_size"]!=world or restored["phase"]!=args.phase: raise ValueError("resume world size/phase mismatch")
+            if restored.get("data_sha256",data_hash)!=data_hash:raise ValueError("resume dataset checksum mismatch")
             progress=restored
+            progress["data_sha256"]=data_hash;progress["validation_sha256"]=checksum(args.validation)
     if args.phase=="rl" and not args.resume: raise ValueError("RL requires an SFT checkpoint")
     budget=Budget(root/"budget.json",args.hourly_rate,args.phase,config["budget"],start=args.started,prior_spend=config.get("prior_spend_upper_bound",0))
     rows=load_rows(args.data); val=load_rows(args.validation)
@@ -146,7 +149,7 @@ def worker(index,args):
             micro=args.microbatch; block=micro*world
             accum=max(1,math.ceil(config["effective_batch"]/block))
             total_batches=math.ceil(len(generation)/block)
-            model.train(); optimizer.zero_grad(set_to_none=True)
+            model.train(); optimizer.zero_grad(set_to_none=True);step_timings=[];step_started=time.perf_counter();initial_step=progress["step"]
             for cursor in range(progress["cursor"],total_batches):
                 budget.check(); items=generation[cursor*block:(cursor+1)*block]
                 while len(items)<block: items.append(generation[-1])
@@ -166,11 +169,15 @@ def worker(index,args):
                 if (cursor+1)%accum==0 or cursor+1==total_batches:
                     optimizer_step(); synchronize(device)
                     progress["cursor"]=cursor+1
+                    step_timings.append(time.perf_counter()-step_started);step_started=time.perf_counter()
                     seconds=time.perf_counter()-t
                     if not math.isfinite(float(lm_loss.item()+d_loss.item())): raise RuntimeError("non-finite loss")
                     if rank==0: metric(root/"metrics.jsonl",{"phase":"sft","step":progress["step"],"lm_loss":float(lm_loss.item()),"decision_loss":float(d_loss.item()),"seconds_last_microbatch":seconds,"useful_tokens_last_microbatch":useful})
-                    if progress["step"]==2:
-                        projected=(time.perf_counter()-start)/2*(math.ceil(total_batches/accum)-progress["step"])
+                    # Every batch is checked against elapsed cost. Extrapolate only
+                    # after twelve updates, allowing shape caches and warmup to settle.
+                    # Use the slowest of the last three full optimizer updates.
+                    if progress["step"]-initial_step>=12:
+                        projected=max(step_timings[-3:])*(math.ceil(total_batches/accum)-progress["step"])
                         budget.check(projected)
                     if progress["step"]%config["checkpoint_interval"]==0:
                         value=validate(); save("latest")

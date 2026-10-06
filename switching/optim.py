@@ -2,9 +2,9 @@
 import torch
 
 class DeviceAdamW(torch.optim.Optimizer):
-    def __init__(self,params,lr=1e-4,betas=(.9,.999),eps=1e-8,weight_decay=.01):
+    def __init__(self,params,lr=1e-4,betas=(.9,.999),eps=1e-8,weight_decay=.01,warmup_steps=0):
         if lr<=0 or eps<=0 or not all(0<=b<1 for b in betas):raise ValueError("invalid AdamW configuration")
-        super().__init__(params,dict(lr=lr,betas=betas,eps=eps,weight_decay=weight_decay))
+        super().__init__(params,dict(lr=lr,base_lr=lr,betas=betas,eps=eps,weight_decay=weight_decay,warmup_steps=warmup_steps))
 
     @torch.no_grad()
     def step(self,closure=None):
@@ -28,16 +28,22 @@ class DeviceAdamW(torch.optim.Optimizer):
                 second.mul_(beta2).addcmul_(gradient,gradient,value=1-beta2)
                 correction1=1-torch.pow(beta1,state["step"])
                 correction2=1-torch.pow(beta2,state["step"])
-                # Transfer a tiny scalar as data rather than embedding each warmup
-                # learning rate and Python bias-correction value in a new graph.
-                rate=torch.tensor(group["lr"],dtype=torch.float32).to(parameter.device)
+                # Keep warmup and bias correction on the device instead of
+                # embedding a different Python scalar into each update graph.
+                if group["warmup_steps"]:
+                    rate=group["base_lr"]*torch.clamp(state["step"]/group["warmup_steps"],max=1.0)
+                else:rate=group["lr"]
                 updated=parameter.float()*(1-rate*group["weight_decay"])
                 updated-=rate*(first/correction1)/(torch.sqrt(second/correction2)+group["eps"])
                 parameter.copy_(updated.to(parameter.dtype))
         return loss
 
     def load_state_dict(self,state_dict):
+        requested_warmup=[group["warmup_steps"] for group in self.param_groups]
+        requested_base=[group["base_lr"] for group in self.param_groups]
         super().load_state_dict(state_dict)
+        for group,warmup,base in zip(self.param_groups,requested_warmup,requested_base):
+            group["warmup_steps"]=warmup;group.setdefault("base_lr",base)
         for parameter,state in self.state.items():
             for name in ("step","exp_avg","exp_avg_sq"):
                 if name in state:state[name]=state[name].to(device=parameter.device,dtype=torch.float32)

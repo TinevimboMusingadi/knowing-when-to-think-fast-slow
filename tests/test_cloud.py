@@ -6,6 +6,13 @@ spec=importlib.util.spec_from_file_location("cloud",Path(__file__).parents[1]/"s
 cloud=importlib.util.module_from_spec(spec);spec.loader.exec_module(cloud)
 
 class CloudTests(unittest.TestCase):
+    def test_recovery_keeps_rank_state_and_skips_completed_pilot(self):
+        session={"run_id":"test","name":"kws-test","created":1,"resume_sft_run":"20261006-111427"}
+        script=cloud.startup(session,"gs://bucket/payload.tar.gz")
+        self.assertIn('restore/rank{rank}',script)
+        self.assertIn('--restore-optimizer',script)
+        self.assertNotIn('--phase pilot',script)
+
     def test_startup_preserves_failure_log(self):
         session={"run_id":"test","name":"kws-test","created":1}
         script=cloud.startup(session,"gs://bucket/payload.tar.gz")
