@@ -5,8 +5,8 @@ from pathlib import Path
 from transformers import AutoTokenizer
 from switching.protocol import MODES,EpisodeEnv,decision_state,parse_action
 
-def audit(path,model_id="Qwen/Qwen3-1.7B"):
-    tokenizer=AutoTokenizer.from_pretrained(model_id)
+def audit(path,model_id="Qwen/Qwen3-1.7B",offline=False):
+    tokenizer=AutoTokenizer.from_pretrained(model_id,local_files_only=offline)
     tokenizer.add_special_tokens({"additional_special_tokens":list(MODES)})
     lengths=[];oversized=[];decision_lengths=[]
     for line in Path(path).open(encoding="utf-8"):
@@ -25,8 +25,8 @@ def audit(path,model_id="Qwen/Qwen3-1.7B"):
     return {"generation_examples":len(lengths),"max_generation_tokens":max(lengths),"max_decision_tokens":max(decision_lengths),"total_useful_tokens":sum(lengths),"oversized":oversized}
 
 if __name__=="__main__":
-    parser=argparse.ArgumentParser();parser.add_argument("--data",default="data/train.jsonl");parser.add_argument("--output")
-    args=parser.parse_args();record=audit(args.data);text=json.dumps(record,indent=2)
+    parser=argparse.ArgumentParser();parser.add_argument("--data",default="data/train.jsonl");parser.add_argument("--output");parser.add_argument("--offline",action="store_true")
+    args=parser.parse_args();record=audit(args.data,offline=args.offline);text=json.dumps(record,indent=2)
     if args.output:Path(args.output).write_text(text)
     print(text)
     if record["oversized"]:raise SystemExit("oversized episodes must be repaired; targets cannot be truncated")

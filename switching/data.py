@@ -40,19 +40,22 @@ def make_episode(split, behavior, index):
     opts = candidates(answer, rng)
     question_type="choice"
     if behavior=="fast" and index%3==1:
-        if index%2:a,b=b,a
+        a=100+unique*2;b=a+(1 if index%2==0 else -1)
         answer="yes" if a>b else "no"
         state=f"Are {a} items more than {b} items? Use unknown only if the quantities are unavailable."
+        if index%9==4:
+            answer="unknown";state=f"Are {a} items more than an undisclosed number of items? Use unknown when a required quantity is unavailable."
         opts=[{"id":v,"value":v,"text":v} for v in ("yes","no","unknown")]
         question_type="yes_no_unknown"
     elif behavior=="fast" and index%3==2:
-        number=index%9
+        origin=unique*7;score=(index//3)%6;number=origin+score
         if split=="train":
-            answer=min(5,number);state=f"Score the count {number} using the rubric score=min(5,count). Return an integer from 0 through 5."
+            answer=score;state=f"Score the count {number} using the rubric score=min(5,max(0,count-{origin})). Return an integer from 0 through 5."
         elif split=="val":
-            answer=max(0,5-number);state=f"Score {number} defects using the rubric score=max(0,5-defects). Return an integer from 0 through 5."
+            answer=5-score;state=f"Score {number} defects using the rubric score=min(5,max(0,{origin+5}-defects)). Return an integer from 0 through 5."
         else:
-            answer=min(5,number//2);state=f"Score {number} completed items using the rubric score=min(5,floor(items/2)). Return an integer from 0 through 5."
+            number=origin+2*score+index%2
+            answer=score;state=f"Score {number} completed items using the rubric score=min(5,max(0,floor((items-{origin})/2))). Return an integer from 0 through 5."
         opts=[{"id":f"score-{v}","value":v,"text":str(v)} for v in range(6)]
         question_type="bounded_score"
     row = {"id": f"{split}-{behavior}-{index}", "group": f"{split}-{behavior}-family", "behavior": behavior, "question_type":question_type,"prompt": state, "answer": answer, "candidates": opts, "verified": True, "source": "deterministic_arithmetic_v1", "steps": []}

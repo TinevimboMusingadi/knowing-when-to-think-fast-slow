@@ -22,6 +22,13 @@ class CoreTests(unittest.TestCase):
             env=EpisodeEnv(row);step=row["steps"][0];env.step(step["completion"],step["decision"])
             self.assertTrue(env.reward(0)[1]["correct"])
 
+    def test_rubrics_are_unique_and_unknown_is_supervised(self):
+        rows=[make_episode("train","fast",index) for index in range(120)]
+        self.assertEqual(len({r["prompt"] for r in rows}),len(rows))
+        labels={r["answer"] for r in rows if r["question_type"]=="yes_no_unknown"}
+        self.assertEqual(labels,{"yes","no","unknown"})
+        self.assertEqual({r["answer"] for r in rows if r["question_type"]=="bounded_score"},set(range(6)))
+
     def test_jev_can_continue_into_reasoning(self):
         row=make_episode("train","reasoning",2);env=EpisodeEnv(row)
         first=row["steps"][0];env.step(first["completion"],first["decision"])

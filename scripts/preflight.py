@@ -7,7 +7,7 @@ from pathlib import Path
 
 def audit(root):
     root=Path(root); manifest=json.loads((root/"data/manifest.json").read_text());groups=[]
-    modes={"jev","direct","cot"}; errors=[]
+    modes={"jev","direct","cot"}; errors=[];problems=set()
     for split,info in manifest["splits"].items():
         path=root/"data"/f"{split}.jsonl"
         if hashlib.sha256(path.read_bytes()).hexdigest()!=info["sha256"]:errors.append(f"checksum mismatch: {split}")
@@ -16,6 +16,9 @@ def audit(root):
         if len(rows)!=info["count"]:errors.append(f"count mismatch: {split}")
         current=set()
         for row in rows:
+            problem=" ".join(row["prompt"].split(" Candidates: ")[0].lower().split())
+            if problem in problems:errors.append(f"duplicate source problem: {row['id']}")
+            problems.add(problem)
             if row["id"] in current:errors.append(f"duplicate episode: {row['id']}")
             current.add(row["id"])
             if not row.get("verified"):errors.append(f"unverified row: {row['id']}")
