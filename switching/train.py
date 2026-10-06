@@ -73,6 +73,7 @@ def worker(index,args):
             if restored.get("data_sha256",data_hash)!=data_hash:raise ValueError("resume dataset checksum mismatch")
             progress=restored
             progress["data_sha256"]=data_hash;progress["validation_sha256"]=checksum(args.validation)
+            progress["training_config"]=config
     if args.phase=="rl" and not args.resume: raise ValueError("RL requires an SFT checkpoint")
     budget=Budget(root/"budget.json",args.hourly_rate,args.phase,config["budget"],start=args.started,prior_spend=config.get("prior_spend_upper_bound",0))
     rows=load_rows(args.data); val=load_rows(args.validation)
@@ -172,7 +173,7 @@ def worker(index,args):
                     step_timings.append(time.perf_counter()-step_started);step_started=time.perf_counter()
                     seconds=time.perf_counter()-t
                     if not math.isfinite(float(lm_loss.item()+d_loss.item())): raise RuntimeError("non-finite loss")
-                    if rank==0: metric(root/"metrics.jsonl",{"phase":"sft","step":progress["step"],"lm_loss":float(lm_loss.item()),"decision_loss":float(d_loss.item()),"seconds_last_microbatch":seconds,"useful_tokens_last_microbatch":useful})
+                    if rank==0: metric(root/"metrics.jsonl",{"phase":"sft","step":progress["step"],"lm_loss":float(lm_loss.item()),"decision_loss":float(d_loss.item()),"seconds_last_microbatch":seconds,"seconds_optimizer_update":step_timings[-1],"useful_tokens_last_microbatch":useful,"timestamp":time.time()})
                     # Every batch is checked against elapsed cost. Extrapolate only
                     # after twelve updates, allowing shape caches and warmup to settle.
                     # Use the slowest of the last three full optimizer updates.

@@ -10,6 +10,10 @@ from pathlib import Path
 
 def checksum(path): return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
+def rng_tuple(value):
+    """XLA's checkpoint traversal may serialize tuples as lists."""
+    return tuple(rng_tuple(item) for item in value) if isinstance(value,(tuple,list)) else value
+
 class Budget:
     def __init__(self, path, rate, stage, limits, start=None,prior_spend=0):
         self.path=Path(path); self.rate=float(rate); self.stage=stage; self.limits=limits
@@ -82,7 +86,7 @@ class Checkpoints:
         model.restore_trainable(state["trainable"])
         if optimizer is not None: optimizer.load_state_dict(state["optimizer"])
         if scheduler is not None: scheduler.load_state_dict(state["scheduler"])
-        random.setstate(state["python_rng"]); torch.set_rng_state(state["torch_rng"])
+        random.setstate(rng_tuple(state["python_rng"])); torch.set_rng_state(state["torch_rng"])
         if "xla_rng" in state:
             import torch_xla.core.xla_model as xm
             xm.set_rng_state(state["xla_rng"])

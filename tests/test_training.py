@@ -8,6 +8,7 @@ from switching.batching import pack
 from switching.storage import Checkpoints
 from switching.train import grpo_loss,advantages,memory_headroom,is_memory_exhaustion
 from switching.optim import DeviceAdamW
+from switching.inspect_checkpoint import inspect
 
 class TinyTokenizer:
     pad_token_id=0
@@ -114,6 +115,7 @@ class TrainingTests(unittest.TestCase):
         model=tiny_model();opt=torch.optim.AdamW([p for p in model.parameters() if p.requires_grad]);sched=torch.optim.lr_scheduler.LambdaLR(opt,lambda _:1)
         with tempfile.TemporaryDirectory() as root:
             manager=Checkpoints(root);state=model.trainable_state();path=manager.save("latest",model,opt,sched,{"step":1})
+            self.assertFalse(inspect(path)["parameter_updates_verified"])
             with torch.no_grad():model.head.score.weight.add_(4)
             manager.load(path,model,opt,sched)
             for k,v in model.trainable_state().items():torch.testing.assert_close(v,state[k])

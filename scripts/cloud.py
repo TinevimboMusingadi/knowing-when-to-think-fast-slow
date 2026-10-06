@@ -63,6 +63,7 @@ def startup(session,archive_uri):
     if session.get("resume_sft_run"):
         training_commands="\n".join([
             f"python -m switching.recover --run-id {session['resume_sft_run']} --output \"$RUN/restore\"",
+            'python -m switching.inspect_checkpoint --checkpoint "$RUN/restore/rank0" --output "$RUN/restored-parameter-proof.json"',
             "MICRO=1",
             f'python -m switching.train --phase sft --resume "$RUN/restore/rank{{rank}}" --restore-optimizer --output "$RUN" --hourly-rate {RATE_BOUND} --started {session["created"]} --microbatch "$MICRO" --gcs {prefix}/checkpoints'])
     else:
