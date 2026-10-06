@@ -64,10 +64,13 @@ def startup(session,archive_uri):
 set -euo pipefail
 mkdir -p /opt/kws
 cd /opt/kws
+mkdir -p runs/{session['run_id']}
+exec > >(tee -a /opt/kws/startup.log) 2>&1
 export PJRT_DEVICE=TPU
 export HF_HOME=/opt/kws/hf-cache
 export TOKENIZERS_PARALLELISM=false
 cleanup() {{
+  gcloud storage cp /opt/kws/startup.log {prefix}/startup.log || true
   gcloud storage cp -r runs/{session['run_id']} {prefix}/logs/ || true
   gcloud compute tpus tpu-vm delete {session['name']} --project={PROJECT} --zone={ZONE} --quiet || true
 }}
@@ -79,12 +82,14 @@ python3 -m uv python install 3.11
 python3 -m uv venv --python 3.11 --seed .venv
 . .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install torch==2.8.0 'torch_xla[tpu]==2.8.0' -f https://storage.googleapis.com/libtpu-releases/index.html
+python -m pip install torch==2.8.0 --index-url https://download.pytorch.org/whl/cpu
+python -m pip install 'torch_xla[tpu]==2.8.0' -f https://storage.googleapis.com/libtpu-releases/index.html
 python -m pip install transformers==4.57.3 peft==0.18.0 google-cloud-storage safetensors
 python -m unittest discover -s tests -v
 python -c 'import torch_xla; print(torch_xla.devices())'
 mkdir -p runs/{session['run_id']}
 RUN=runs/{session['run_id']}
+python -m pip freeze > "$RUN/requirements-lock.txt"
 python -m switching.train --phase pilot --output "$RUN" --hourly-rate {RATE_BOUND} --started {session['created']} --gcs {prefix}/checkpoints
 MICRO=$(python -c 'import json; print(json.load(open("runs/{session['run_id']}/pilot-selection.json"))["microbatch"])')
 python -m switching.train --phase sft --output "$RUN" --hourly-rate {RATE_BOUND} --microbatch "$MICRO" --gcs {prefix}/checkpoints
@@ -109,15 +114,28 @@ def main():
     sys.path.insert(0,str(root/"scripts"))
     from preflight import audit
     audit(root)
+    prior_spend=0.0
+    for path in (root/"runs").glob("*/cloud-session.json"):
+        old=json.loads(path.read_text())
+        if old.get("state")=="created":
+            resource=describe(old)
+            if resource is not None:raise RuntimeError("a previous owned TPU is still active or deleting; wait for teardown")
+            old["estimated_compute_upper_bound"]=(time.time()-old["created"])/3600*old["rate_upper_bound"]*1.15
+            old["state"]="closed";path.write_text(json.dumps(old,indent=2))
+        prior_spend+=old.get("estimated_compute_upper_bound",0)
+    if prior_spend>=40:raise RuntimeError("insufficient remaining budget for another complete attempt")
     run_id=datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d-%H%M%S")
     created=time.time()
-    session={"run_id":run_id,"name":f"kws-{run_id}","project":PROJECT,"zone":ZONE,"accelerator":ACCELERATOR,"created":created,"deadline":created+(45/(RATE_BOUND*1.15))*3600,"rate_upper_bound":RATE_BOUND,"state":"prepared"}
+    session={"run_id":run_id,"name":f"kws-{run_id}","project":PROJECT,"zone":ZONE,"accelerator":ACCELERATOR,"created":created,"deadline":created+((45-prior_spend)/(RATE_BOUND*1.15))*3600,"rate_upper_bound":RATE_BOUND,"prior_spend_upper_bound":prior_spend,"state":"prepared"}
     folder=root/"runs"/run_id;folder.mkdir(parents=True);session_path=folder/"cloud-session.json"
     session_path.write_text(json.dumps(session,indent=2))
     payload=folder/"payload.tar.gz"
-    allowed=["switching","tests","configs","pyproject.toml","README.md"]
+    allowed=["switching","tests","scripts","pyproject.toml","README.md"]
+    effective_config=json.loads((root/"configs/experiment.json").read_text());effective_config["prior_spend_upper_bound"]=prior_spend
+    run_config=folder/"experiment.json";run_config.write_text(json.dumps(effective_config,indent=2))
     with tarfile.open(payload,"w:gz") as archive:
         for name in allowed:archive.add(root/name,arcname=name,filter=lambda info:None if "__pycache__" in info.name else info)
+        archive.add(run_config,arcname="configs/experiment.json")
         for name in ("train.jsonl","val.jsonl","test.jsonl","manifest.json","GSM8K_LICENSE"):archive.add(root/"data"/name,arcname=f"data/{name}")
     uri=f"gs://{BUCKET}/knowing-when-to-switch/{run_id}/payload.tar.gz"
     gcloud("storage","cp",str(payload),uri)

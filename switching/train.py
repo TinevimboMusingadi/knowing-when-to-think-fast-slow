@@ -22,6 +22,16 @@ def advantages(rewards):
     values=torch.tensor(rewards,dtype=torch.float32)
     return (values-values.mean())/(values.std(unbiased=False)+1e-6)
 
+def memory_headroom(memory):
+    """Support both legacy XRT and current PJRT memory counters; fail closed."""
+    if "bytes_limit" in memory:
+        total=int(memory["bytes_limit"])
+        used=int(memory.get("peak_bytes_used",memory["bytes_used"]))
+        return max(0,total-used)/total if total else 0
+    if "kb_total" in memory and "kb_free" in memory:
+        return int(memory["kb_free"])/int(memory["kb_total"])
+    raise ValueError("unrecognized device memory counters")
+
 def load_rows(path):
     with open(path,encoding="utf-8") as stream: return [json.loads(line) for line in stream if line.strip()]
 
@@ -56,7 +66,7 @@ def worker(index,args):
             if restored["world_size"]!=world or restored["phase"]!=args.phase: raise ValueError("resume world size/phase mismatch")
             progress=restored
     if args.phase=="rl" and not args.resume: raise ValueError("RL requires an SFT checkpoint")
-    budget=Budget(root/"budget.json",args.hourly_rate,args.phase,config["budget"],start=args.started)
+    budget=Budget(root/"budget.json",args.hourly_rate,args.phase,config["budget"],start=args.started,prior_spend=config.get("prior_spend_upper_bound",0))
     rows=load_rows(args.data); val=load_rows(args.validation)
     best=float("inf"); start=time.perf_counter();reference=None
     def update(loss):
@@ -107,11 +117,11 @@ def worker(index,args):
                 t=time.perf_counter(); loss=model.lm(**batch).loss; update(loss); optimizer_step(); synchronize(device)
                 seconds=time.perf_counter()-t
                 memory=xm.get_memory_info(device) if xm else {}
-                free=memory.get("kb_free",memory.get("bytes_free",1)); total=memory.get("kb_total",memory.get("bytes_limit",1))
-                record={"microbatch":micro,"bucket":bucket,"seconds":seconds,"compile_seconds":compile_seconds,"useful_tokens_per_second":useful/seconds,"padding_fraction":1-useful/(bucket*micro),"memory":memory,"memory_headroom":free/total,"device_utilization":None,"dollars_per_step":seconds*args.hourly_rate/3600}
+                headroom=memory_headroom(memory) if xm else 1.0
+                record={"microbatch":micro,"bucket":bucket,"seconds":seconds,"compile_seconds":compile_seconds,"useful_tokens_per_second":useful/seconds,"padding_fraction":1-useful/(bucket*micro),"memory":memory,"memory_headroom":headroom,"device_utilization":None,"dollars_per_step":seconds*args.hourly_rate/3600}
                 feasible.append(record)
                 if rank==0: metric(root/"pilot.jsonl",record)
-                if free/total<.15: break
+                if headroom<.15: break
             eligible=[r for r in feasible if r["memory_headroom"]>=.15]
             if not eligible: raise RuntimeError("pilot cannot preserve required memory headroom")
             selected=max(eligible,key=lambda r:r["useful_tokens_per_second"])

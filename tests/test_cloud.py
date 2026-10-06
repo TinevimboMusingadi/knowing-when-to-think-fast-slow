@@ -6,6 +6,11 @@ spec=importlib.util.spec_from_file_location("cloud",Path(__file__).parents[1]/"s
 cloud=importlib.util.module_from_spec(spec);spec.loader.exec_module(cloud)
 
 class CloudTests(unittest.TestCase):
+    def test_startup_preserves_failure_log(self):
+        session={"run_id":"test","name":"kws-test","created":1}
+        script=cloud.startup(session,"gs://bucket/payload.tar.gz")
+        self.assertIn("startup.log",script);self.assertIn("requirements-lock.txt",script)
+        self.assertIn("download.pytorch.org/whl/cpu",script)
     def test_never_delete_other_runs(self):
         session={"name":"kws-one","run_id":"one","project":"p","zone":"z"}
         with patch.object(cloud,"describe",return_value={"labels":{"kws_run":"other"}}),patch.object(cloud,"gcloud") as call:
