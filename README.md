@@ -19,6 +19,19 @@ been verified by a subsequent Qwen3-1.7B TPU run.
 The initial tasks are verified arithmetic and controlled context fixtures.
 They do not establish general-purpose reasoning or autonomous tool competence.
 
+### Bounded RL recovery
+
+`python scripts/restart_rl.py` prepares an RL-only recovery payload; add
+`--launch` to create a preemptible `v5litepod-4`. It verifies the saved best SFT
+checkpoint, starts a fresh optimizer, retains the repaired numerical checks,
+samples four episodes per prompt, and stops after at most three updates.
+The recovery uses six balanced validation fixtures as a pilot check rather than
+a capability benchmark. Setup counts against its $1.80 allowance, and an
+independent teardown deadline preserves the $50 ceiling and $5 storage reserve.
+Prior compute is conservatively bounded at $43.19 using the audited deletion
+completion timestamp; this is not an actual billing total. The 60-example
+comparison remains pending.
+
 ## Data
 
 Existing math prompts are matched against the original GSM8K **training** answers

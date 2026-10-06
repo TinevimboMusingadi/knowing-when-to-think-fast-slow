@@ -131,7 +131,7 @@ def worker(index,args):
     def validate():
         model.eval(); losses=[]
         if args.phase=="rl":
-            results=rollout_group(model,val[rank:24:world],sample=False)
+            results=rollout_group(model,val[rank:config.get("rl_validation_limit",24):world],sample=False)
             value=-sum(r["reward"] for r in results)/max(1,len(results))
             if xm:value=xm.mesh_reduce("validation-reward",value,lambda values:sum(values)/len(values))
             return value
