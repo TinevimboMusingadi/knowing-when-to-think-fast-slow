@@ -15,6 +15,7 @@ def synchronize(device):
     elif device.type == "cuda": torch.cuda.synchronize(device)
 
 def token_logps(model, prompt, completion, bucket=2048):
+    bucket=next((b for b in (512,1024,2048) if b>=len(prompt)+len(completion)),bucket)
     if len(prompt)+len(completion)>bucket: raise ValueError("rollout exceeds context bucket")
     device=next(model.parameters()).device
     values=prompt+completion
@@ -59,7 +60,17 @@ def rollout_group(model, episodes, max_tokens=512, max_transitions=4, max_lookup
         remaining=min(max_tokens-tokens[i] for i in active)
         length=min(remaining,2048-width)
         with torch.no_grad():
-            outputs=model.lm.generate(input_ids=input_ids,attention_mask=attention,max_new_tokens=length,do_sample=sample,**({"temperature":1.0,"top_p":1.0,"top_k":0} if sample else {}),pad_token_id=model.tokenizer.pad_token_id,eos_token_id=model.tokenizer.convert_tokens_to_ids("<|im_end|>"),stopping_criteria=StoppingCriteriaList([StopAtDecision(width,model.tokenizer.convert_tokens_to_ids(MODES[0]))]),use_cache=True)
+            if device.type=="xla":
+                from .decoding import static_generate
+                prefill=next(b for b in (512,1024,2048) if b>=width)
+                length=min(length,2048-prefill)
+                if length<1:
+                    for i in active:envs[i].error="context budget exhausted";envs[i].done=True
+                    break
+                new=static_generate(model.lm,actual_prompts,length,model.tokenizer.pad_token_id,model.tokenizer.convert_tokens_to_ids("<|im_end|>"),model.tokenizer.convert_tokens_to_ids(MODES[0]),sample=sample)
+                outputs=torch.cat((input_ids,new),dim=1)
+            else:
+                outputs=model.lm.generate(input_ids=input_ids,attention_mask=attention,max_new_tokens=length,do_sample=sample,**({"temperature":1.0,"top_p":1.0,"top_k":0} if sample else {}),pad_token_id=model.tokenizer.pad_token_id,eos_token_id=model.tokenizer.convert_tokens_to_ids("<|im_end|>"),stopping_criteria=StoppingCriteriaList([StopAtDecision(width,model.tokenizer.convert_tokens_to_ids(MODES[0]))]),use_cache=True)
         for batch_index,i in enumerate(active):
             generated=outputs[batch_index,width:].cpu().tolist()
             if generated and generated[0]==model.tokenizer.convert_tokens_to_ids(MODES[0]):generated=generated[:1]
