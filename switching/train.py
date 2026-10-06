@@ -37,6 +37,10 @@ def is_memory_exhaustion(error):
     text=str(error).lower()
     return any(term in text for term in ("out of memory","resource_exhausted","memory space hbm"))
 
+def project_training_seconds(warm_times,remaining_steps,cold_times):
+    if not warm_times:raise ValueError("no compilation-free timing measurements")
+    return max(warm_times[-5:])*1.25*remaining_steps+2*max(cold_times,default=0)
+
 def load_rows(path):
     with open(path,encoding="utf-8") as stream: return [json.loads(line) for line in stream if line.strip()]
 
@@ -82,10 +86,14 @@ def worker(index,args):
         loss.backward()
         synchronize(device)
     def optimizer_step():
-        torch.nn.utils.clip_grad_norm_([p for p in model.parameters() if p.requires_grad],1.0)
+        norm=torch.nn.utils.clip_grad_norm_([p for p in model.parameters() if p.requires_grad],1.0)
+        norm_value=float(norm.item());finite=math.isfinite(norm_value)
+        if xm:finite=xm.mesh_reduce("gradient-agreement",finite,all)
+        if not finite:raise RuntimeError("non-finite gradients; optimizer update refused")
         if xm: xm.optimizer_step(optimizer,barrier=True)
         else: optimizer.step()
         scheduler.step(); optimizer.zero_grad(set_to_none=True); progress["step"]+=1
+        return norm_value
     def save(tag):
         checkpoints.save(tag,model,optimizer,scheduler,progress,rank,reference=reference)
     def validate():
@@ -107,12 +115,21 @@ def worker(index,args):
         if xm: value=xm.mesh_reduce("validation-loss",value,lambda values:sum(values)/len(values))
         model.train(); return value
     completed=False
+    def check_budget(seconds=0):
+        allowed=budget.remaining()>seconds/3600*args.hourly_rate*1.15
+        if xm:allowed=xm.mesh_reduce("budget-agreement",allowed,all)
+        if not allowed:raise RuntimeError("stage cannot complete within the enforced spending limit")
+    def compile_count():
+        if not xm:return 0
+        import torch_xla.debug.metrics as metrics
+        data=metrics.metric_data("CompileTime")
+        return data[0] if data else 0
     try:
         if args.phase=="pilot":
             generation,_=supervised_items(model,rows[:16]); bucket=2048
             feasible=[]
             for micro in (1,2,4,8):
-                budget.check(); optimizer.zero_grad(set_to_none=True)
+                check_budget(); optimizer.zero_grad(set_to_none=True)
                 items=[item for item in generation if len(item[0])<=bucket][:micro]
                 if not items: raise RuntimeError("no pilot examples fit bucket")
                 t=time.perf_counter(); batch,_,useful=pack(items,bucket,micro,model.tokenizer.pad_token_id,device)
@@ -150,9 +167,9 @@ def worker(index,args):
             micro=args.microbatch; block=micro*world
             accum=max(1,math.ceil(config["effective_batch"]/block))
             total_batches=math.ceil(len(generation)/block)
-            model.train(); optimizer.zero_grad(set_to_none=True);step_timings=[];step_started=time.perf_counter();initial_step=progress["step"]
+            model.train(); optimizer.zero_grad(set_to_none=True);step_timings=[];warm_times=[];cold_times=[];step_started=time.perf_counter();initial_step=progress["step"];compile_before=compile_count()
             for cursor in range(progress["cursor"],total_batches):
-                budget.check(); items=generation[cursor*block:(cursor+1)*block]
+                check_budget(); items=generation[cursor*block:(cursor+1)*block]
                 while len(items)<block: items.append(generation[-1])
                 bucket=next(b for b in config["buckets"] if b>=max(len(item[0]) for item in items))
                 local=items[rank*micro:(rank+1)*micro]
@@ -168,28 +185,38 @@ def worker(index,args):
                 d_loss=torch.nn.functional.cross_entropy(logits,torch.tensor([d[2] for d in decision_batch],device=device))
                 update(d_loss*.5/group)
                 if (cursor+1)%accum==0 or cursor+1==total_batches:
-                    optimizer_step(); synchronize(device)
+                    gradient_norm=optimizer_step(); synchronize(device)
                     progress["cursor"]=cursor+1
-                    step_timings.append(time.perf_counter()-step_started);step_started=time.perf_counter()
+                    lm_value=float(lm_loss.item());decision_value=float(d_loss.item())
+                    compilations=compile_count()-compile_before
+                    if xm:compilations=xm.mesh_reduce("compile-agreement",compilations,max)
+                    duration=time.perf_counter()-step_started
+                    if xm:duration=xm.mesh_reduce("duration-agreement",duration,max)
+                    step_timings.append(duration)
+                    (cold_times if compilations else warm_times).append(duration)
                     seconds=time.perf_counter()-t
-                    if not math.isfinite(float(lm_loss.item()+d_loss.item())): raise RuntimeError("non-finite loss")
-                    if rank==0: metric(root/"metrics.jsonl",{"phase":"sft","step":progress["step"],"lm_loss":float(lm_loss.item()),"decision_loss":float(d_loss.item()),"seconds_last_microbatch":seconds,"seconds_optimizer_update":step_timings[-1],"useful_tokens_last_microbatch":useful,"timestamp":time.time()})
-                    # Every batch is checked against elapsed cost. Extrapolate only
-                    # after twelve updates, allowing shape caches and warmup to settle.
-                    # Use the slowest of the last three full optimizer updates.
-                    if progress["step"]-initial_step>=12:
-                        projected=max(step_timings[-3:])*(math.ceil(total_batches/accum)-progress["step"])
-                        budget.check(projected)
+                    finite=math.isfinite(lm_value+decision_value)
+                    if xm:finite=xm.mesh_reduce("loss-agreement",finite,all)
+                    if not finite: raise RuntimeError("non-finite loss")
+                    if rank==0: metric(root/"metrics.jsonl",{"phase":"sft","step":progress["step"],"lm_loss":lm_value,"decision_loss":decision_value,"gradient_norm":gradient_norm,"seconds_last_microbatch":seconds,"seconds_optimizer_update":duration,"new_compilations":compilations,"useful_tokens_last_microbatch":useful,"timestamp":time.time()})
+                    # Count cold graphs separately; compilation is paid but is not
+                    # repeated on every future update. Reserve two cold-step costs
+                    # and 25% throughput margin instead of hiding those costs.
+                    if progress["step"]-initial_step>=12 and len(warm_times)>=5:
+                        projected=project_training_seconds(warm_times,math.ceil(total_batches/accum)-progress["step"],cold_times)
+                        if rank==0:metric(root/"cost-projections.jsonl",{"step":progress["step"],"remaining_seconds":projected,"remaining_dollars":projected*args.hourly_rate/3600*1.15,"allowance_remaining":budget.remaining()})
+                        check_budget(projected)
                     if progress["step"]%config["checkpoint_interval"]==0:
                         value=validate(); save("latest")
                         if value<best: best=value; save("best-sft")
                     if args.max_steps and progress["step"]>=args.max_steps: break
+                    step_started=time.perf_counter();compile_before=compile_count()
             value=validate(); save("latest")
             if value<best: save("best-sft")
         else:
             reference=getattr(checkpoints,"loaded_reference",None) or model.trainable_state()
             for cursor in range(progress["cursor"],config["max_rl_steps"]):
-                budget.check(); episode=rows[(cursor*world+rank)%len(rows)]
+                check_budget(); episode=rows[(cursor*world+rank)%len(rows)]
                 samples=rollout_group(model,[episode]*config["group_size"],config["max_generated_tokens"],config["max_transitions"],config["max_lookups"])
                 adv=advantages([s["reward"] for s in samples]).to(device)
                 with torch.no_grad(): old=[action_logps(model,s["trace"]).detach() for s in samples]

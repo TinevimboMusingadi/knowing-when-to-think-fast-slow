@@ -6,7 +6,7 @@ from transformers import Qwen3Config,Qwen3ForCausalLM
 from switching.model import SwitchModel,DecisionHead
 from switching.batching import pack
 from switching.storage import Checkpoints
-from switching.train import grpo_loss,advantages,memory_headroom,is_memory_exhaustion
+from switching.train import grpo_loss,advantages,memory_headroom,is_memory_exhaustion,project_training_seconds
 from switching.optim import DeviceAdamW
 from switching.inspect_checkpoint import inspect
 
@@ -21,6 +21,10 @@ def tiny_model():
     return SwitchModel(Qwen3ForCausalLM(config),TinyTokenizer(),rank=2,alpha=4)
 
 class TrainingTests(unittest.TestCase):
+    def test_projection_separates_compilation_and_reserves_future_cost(self):
+        self.assertEqual(project_training_seconds([10,11,10,10,10],100,[30,50]),1475)
+        with self.assertRaises(ValueError):project_training_seconds([],100,[50])
+
     def test_device_warmup_matches_reference_and_legacy_resume(self):
         a=torch.nn.Parameter(torch.tensor([1.0]));b=torch.nn.Parameter(a.detach().clone())
         custom=DeviceAdamW([a],lr=.01,warmup_steps=10);reference=torch.optim.AdamW([b],lr=.01)

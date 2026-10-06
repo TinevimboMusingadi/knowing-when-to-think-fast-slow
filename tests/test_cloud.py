@@ -2,16 +2,28 @@ import importlib.util
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+from scripts.stage_limit import seconds_remaining
 spec=importlib.util.spec_from_file_location("cloud",Path(__file__).parents[1]/"scripts/cloud.py")
 cloud=importlib.util.module_from_spec(spec);spec.loader.exec_module(cloud)
 
 class CloudTests(unittest.TestCase):
+    def test_independent_stage_timer_includes_margin_and_global_cap(self):
+        self.assertEqual(seconds_remaining({},"rl",10,0,3600,{"rl":15}),1095)
+        self.assertEqual(seconds_remaining({"stages":{"sft":49}},"rl",10,0,0,{"rl":15}),313)
+        self.assertEqual(seconds_remaining({"stages":{"sft":50}},"rl",10,0,0,{"rl":15}),0)
+
+    def test_fresh_sft_does_not_restore_an_old_dataset(self):
+        session={"run_id":"test","name":"kws-test","created":1,"fresh_sft_from_run":"20261006-115020"}
+        script=cloud.startup(session,"gs://bucket/payload.tar.gz")
+        self.assertNotIn('--phase pilot',script);self.assertNotIn('--restore-optimizer',script)
+        self.assertIn('--phase sft',script)
     def test_recovery_keeps_rank_state_and_skips_completed_pilot(self):
         session={"run_id":"test","name":"kws-test","created":1,"resume_sft_run":"20261006-111427"}
         script=cloud.startup(session,"gs://bucket/payload.tar.gz")
         self.assertIn('restore/rank{rank}',script)
         self.assertIn('--restore-optimizer',script)
         self.assertNotIn('--phase pilot',script)
+        self.assertIn('timeout --signal=TERM --kill-after=120',script)
 
     def test_startup_preserves_failure_log(self):
         session={"run_id":"test","name":"kws-test","created":1}

@@ -60,17 +60,22 @@ def watchdog(path):
 
 def startup(session,archive_uri):
     prefix=f"gs://{BUCKET}/knowing-when-to-switch/{session['run_id']}"
+    def bounded(command,phase,started):
+        return "\n".join([f'{phase.upper()}_STARTED={started}',f'{phase.upper()}_SECONDS=$(python scripts/stage_limit.py --budget "$RUN/budget.json" --phase {phase} --rate {RATE_BOUND} --started "${phase.upper()}_STARTED")',f'timeout --signal=TERM --kill-after=120 "${phase.upper()}_SECONDS" {command} --started "${phase.upper()}_STARTED"'])
     if session.get("resume_sft_run"):
         training_commands="\n".join([
             f"python -m switching.recover --run-id {session['resume_sft_run']} --output \"$RUN/restore\"",
             'python -m switching.inspect_checkpoint --checkpoint "$RUN/restore/rank0" --output "$RUN/restored-parameter-proof.json"',
             "MICRO=1",
-            f'python -m switching.train --phase sft --resume "$RUN/restore/rank{{rank}}" --restore-optimizer --output "$RUN" --hourly-rate {RATE_BOUND} --started {session["created"]} --microbatch "$MICRO" --gcs {prefix}/checkpoints'])
+            bounded(f'python -m switching.train --phase sft --resume "$RUN/restore/rank{{rank}}" --restore-optimizer --output "$RUN" --hourly-rate {RATE_BOUND} --microbatch "$MICRO" --gcs {prefix}/checkpoints',"sft",session["created"])])
+    elif session.get("fresh_sft_from_run"):
+        training_commands="\n".join(["MICRO=1",bounded(f'python -m switching.train --phase sft --output "$RUN" --hourly-rate {RATE_BOUND} --microbatch "$MICRO" --gcs {prefix}/checkpoints',"sft",session["created"])])
     else:
         training_commands="\n".join([
             f'python -m switching.train --phase pilot --output "$RUN" --hourly-rate {RATE_BOUND} --started {session["created"]} --gcs {prefix}/checkpoints',
             "MICRO=$(python -c 'import json; print(json.load(open(\"runs/"+session["run_id"]+"/pilot-selection.json\"))[\"microbatch\"])')",
-            f'python -m switching.train --phase sft --output "$RUN" --hourly-rate {RATE_BOUND} --microbatch "$MICRO" --gcs {prefix}/checkpoints'])
+            bounded(f'python -m switching.train --phase sft --output "$RUN" --hourly-rate {RATE_BOUND} --microbatch "$MICRO" --gcs {prefix}/checkpoints',"sft","$(date +%s)")])
+    rl_command=bounded(f'python -m switching.train --phase rl --resume "$SFT" --output "$RUN" --hourly-rate {RATE_BOUND} --gcs {prefix}/checkpoints',"rl","$(date +%s)")
     return f'''#!/bin/bash
 set -euo pipefail
 mkdir -p /opt/kws
@@ -105,14 +110,14 @@ python -m pip freeze > "$RUN/requirements-lock.txt"
 SFT=$(python -c 'import json; print("runs/{session['run_id']}/checkpoints/"+json.load(open("runs/{session['run_id']}/checkpoints/best-sft-rank0.json"))["directory"])')
 # Each evaluation is separately time-limited within the $5 combined allowance.
 timeout 900 python -m switching.evaluate --checkpoint "$SFT" --data data/val.jsonl --output "$RUN/evaluation-sft" --limit 24 --budget-path "$RUN/budget.json" --hourly-rate {RATE_BOUND}
-python -m switching.train --phase rl --resume "$SFT" --output "$RUN" --hourly-rate {RATE_BOUND} --gcs {prefix}/checkpoints
+{rl_command}
 RL=$(python -c 'import json; print("runs/{session['run_id']}/checkpoints/"+json.load(open("runs/{session['run_id']}/checkpoints/best-rl-rank0.json"))["directory"])')
 python -m switching.compare --sft "$SFT" --rl "$RL" --output "$RUN/comparisons" --budget-path "$RUN/budget.json" --hourly-rate {RATE_BOUND}
 gcloud storage cp -r "$RUN" {prefix}/artifacts/
 '''
 
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument("--watchdog");parser.add_argument("--launch",action="store_true");parser.add_argument("--cleanup");parser.add_argument("--resume-sft-run");parser.add_argument("--zone",choices=["us-central1-a","us-west4-a","us-west1-c"],default=ZONE)
+    parser=argparse.ArgumentParser();parser.add_argument("--watchdog");parser.add_argument("--launch",action="store_true");parser.add_argument("--cleanup");recovery=parser.add_mutually_exclusive_group();recovery.add_argument("--resume-sft-run");recovery.add_argument("--fresh-sft-from-run");parser.add_argument("--zone",choices=["us-central1-a","us-west4-a","us-west1-c"],default=ZONE)
     args=parser.parse_args()
     if args.watchdog:return watchdog(args.watchdog)
     if args.cleanup:return delete_owned(json.loads(Path(args.cleanup).read_text()))
@@ -136,13 +141,18 @@ def main():
     run_id=datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d-%H%M%S")
     created=time.time()
     session={"run_id":run_id,"name":f"kws-{run_id}","project":PROJECT,"zone":ZONE,"accelerator":ACCELERATOR,"created":created,"deadline":created+((45-prior_spend)/(RATE_BOUND*1.15))*3600,"rate_upper_bound":RATE_BOUND,"prior_spend_upper_bound":prior_spend,"state":"prepared"}
-    if args.resume_sft_run:
-        prior_folder=root/"runs"/args.resume_sft_run
+    previous_run=args.resume_sft_run or args.fresh_sft_from_run
+    if previous_run:
+        prior_folder=root/"runs"/previous_run
         if prior_folder.parent!=root/"runs" or not (prior_folder/"budget-remote.json").exists():raise ValueError("recovery requires a verified local experiment cost record")
         prior_budget=json.loads((prior_folder/"budget-remote.json").read_text())
         difference=max(0,prior_spend-sum(prior_budget["stages"].values()))
         prior_budget["stages"]["contingency"]=prior_budget["stages"].get("contingency",0)+difference
-        session["resume_sft_run"]=args.resume_sft_run
+        prior_budget["estimated_total"]=sum(prior_budget["stages"].values())
+        session["resume_sft_run" if args.resume_sft_run else "fresh_sft_from_run"]=previous_run
+        if args.fresh_sft_from_run:
+            metrics_file=prior_folder/"metrics-remote.jsonl"
+            if not metrics_file.exists() or not any(json.loads(line).get("phase")=="sft" for line in metrics_file.read_text().splitlines()):raise ValueError("fresh SFT requires evidence of a successful same-model TPU training run")
     folder=root/"runs"/run_id;folder.mkdir(parents=True);session_path=folder/"cloud-session.json"
     session_path.write_text(json.dumps(session,indent=2))
     payload=folder/"payload.tar.gz"
@@ -152,7 +162,7 @@ def main():
     with tarfile.open(payload,"w:gz") as archive:
         for name in allowed:archive.add(root/name,arcname=name,filter=lambda info:None if "__pycache__" in info.name else info)
         archive.add(run_config,arcname="configs/experiment.json")
-        if args.resume_sft_run:
+        if previous_run:
             budget_file=folder/"budget.json";budget_file.write_text(json.dumps(prior_budget,indent=2))
             archive.add(budget_file,arcname=f"runs/{run_id}/budget.json")
         for name in ("train.jsonl","val.jsonl","test.jsonl","manifest.json","GSM8K_LICENSE"):archive.add(root/"data"/name,arcname=f"data/{name}")
