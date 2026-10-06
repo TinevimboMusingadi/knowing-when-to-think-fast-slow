@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "source_audit": {
+    "source_rows": 30731,
+    "verified_against_original_training_answer": 5671,
+    "not_independently_verified": 25057,
+    "accepted": 2,
+    "duplicates": 1
+  },
+  "splits": {
+    "train": {
+      "count": 8000,
+      "sha256": "b8bf126f8a769c0ddf878677fa611fa37bd2d4abe1f5f4c6cbc83f07fb819148",
+      "behaviors": {
+        "reasoning": 2000,
+        "direct": 1000,
+        "fast": 2000,
+        "lookup": 1000,
+        "clarification": 1000,
+        "reason_decide": 1000
+      }
+    },
+    "val": {
+      "count": 600,
+      "sha256": "4b42ccfd6142a4b9bcf126200dd760e224f49788a5b5a3de5d9954f615b51864",
+      "behaviors": {
+        "lookup": 100,
+        "clarification": 100,
+        "reason_decide": 100,
+        "direct": 100,
+        "reasoning": 100,
+        "fast": 100
+      }
+    },
+    "test": {
+      "count": 600,
+      "sha256": "ead6f4943434769246020fbedc34eecba952c15afe590b049a357a2c398de8ca",
+      "behaviors": {
+        "lookup": 100,
+        "clarification": 100,
+        "reason_decide": 100,
+        "direct": 100,
+        "reasoning": 100,
+        "fast": 100
+      }
+    }
+  },
+  "limitations": "Procedural arithmetic and controlled context fixtures; not evidence of broad domain generalization. Old teacher completions are not imported.",
+  "reused_examples": 4000,
+  "source_sha256": "08677b112efdf17647eb11e6b19acfe22abb9df953c55f2d94253a1c6b45092e",
+  "gold_source_sha256": "17f347dc51477c50d4efb83959dbb7c56297aba886e5544ee2aaed3024813465"
+}

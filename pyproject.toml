@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "knowing-when-to-switch"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = ["torch>=2.6", "transformers>=4.51,<5", "peft>=0.17", "safetensors", "google-cloud-storage"]
+
+[project.scripts]
+kws-data = "switching.data:main"
+kws-train = "switching.train:main"
+kws-evaluate = "switching.evaluate:main"
+
+[tool.setuptools.packages.find]
+include = ["switching*"]

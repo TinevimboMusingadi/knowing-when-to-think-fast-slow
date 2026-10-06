@@ -1,0 +1,11 @@
+.runtime/
+.venv/
+__pycache__/
+*.pyc
+data/
+runs/
+checkpoints/
+.env
+_skill_extract/
+cloud-session.json
+*.log
