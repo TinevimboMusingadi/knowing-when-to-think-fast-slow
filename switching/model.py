@@ -5,11 +5,11 @@ from torch import nn
 from .protocol import MODES
 
 class ExtendedEmbedding(nn.Module):
-    def __init__(self, original, count):
+    def __init__(self, original, count, old_size=None):
         super().__init__()
         self.original = original
-        self.old_size = original.num_embeddings
-        self.rows = nn.Parameter(original.weight.detach().mean(0).repeat(count, 1))
+        self.old_size = original.num_embeddings if old_size is None else old_size
+        self.rows = nn.Parameter(original.weight.detach()[:self.old_size].mean(0).repeat(count, 1))
         self.num_embeddings = self.old_size + count
         self.embedding_dim = original.embedding_dim
 
@@ -23,7 +23,7 @@ class ExtendedOutput(nn.Module):
         super().__init__(); self.original = original; self.embedding = embedding
 
     def forward(self, hidden):
-        return torch.cat((self.original(hidden), nn.functional.linear(hidden, self.embedding.rows)), -1)
+        return torch.cat((self.original(hidden)[...,:self.embedding.old_size], nn.functional.linear(hidden, self.embedding.rows)), -1)
 
 class DecisionHead(nn.Module):
     def __init__(self, hidden_size, width=128):
@@ -43,14 +43,15 @@ class SwitchModel(nn.Module):
     def __init__(self, language_model, tokenizer, rank=16, alpha=32, use_lora=True):
         super().__init__()
         self.tokenizer = tokenizer
+        old_size=len(tokenizer) if hasattr(tokenizer,"__len__") else language_model.get_input_embeddings().num_embeddings
         added = tokenizer.add_special_tokens({"additional_special_tokens": list(MODES)})
         if added != len(MODES):
             raise ValueError("load the unextended base tokenizer; checkpoints restore mode rows separately")
         for param in language_model.parameters(): param.requires_grad_(False)
-        embedding = ExtendedEmbedding(language_model.get_input_embeddings(), added)
+        embedding = ExtendedEmbedding(language_model.get_input_embeddings(), added,old_size)
         language_model.set_input_embeddings(embedding)
         language_model.set_output_embeddings(ExtendedOutput(language_model.get_output_embeddings(), embedding))
-        language_model.config.vocab_size += added
+        language_model.config.vocab_size = old_size + added
         if use_lora:
             from peft import LoraConfig, get_peft_model
             language_model = get_peft_model(language_model, LoraConfig(r=rank, lora_alpha=alpha, lora_dropout=0, target_modules=["q_proj", "k_proj", "v_proj", "o_proj"], task_type="CAUSAL_LM"))

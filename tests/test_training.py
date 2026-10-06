@@ -43,6 +43,18 @@ class TrainingTests(unittest.TestCase):
         generated=model.lm.generate(input_ids=torch.tensor([[1,64,2]]),max_new_tokens=2,pad_token_id=0,eos_token_id=63)
         self.assertGreater(generated.shape[1],3)
 
+    def test_padded_base_vocabulary_routes_actual_new_token_ids(self):
+        class PaddedTokenizer(TinyTokenizer):
+            def __len__(self):return 60
+        base=Qwen3ForCausalLM(Qwen3Config(vocab_size=64,hidden_size=32,intermediate_size=64,num_hidden_layers=1,num_attention_heads=4,num_key_value_heads=2,head_dim=8))
+        model=SwitchModel(base,PaddedTokenizer(),rank=2,alpha=4)
+        ids=torch.tensor([[60,61,62,2]])
+        output=model.lm(input_ids=ids,labels=ids,use_cache=False)
+        self.assertEqual(output.logits.shape[-1],63)
+        output.loss.backward()
+        rows=next(p for n,p in model.named_parameters() if n.endswith("rows"))
+        self.assertTrue(torch.all(rows.grad.abs().sum(-1)>0))
+
     def test_reference_preserves_both_heads_and_embeddings(self):
         model=tiny_model();reference=model.trainable_state()
         with torch.no_grad():model.head.score.weight.add_(2)
