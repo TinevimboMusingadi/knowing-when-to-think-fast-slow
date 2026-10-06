@@ -43,7 +43,7 @@ def rollout_group(model, episodes, max_tokens=512, max_transitions=4, max_lookup
                 probabilities=logits[0].softmax(-1); best=int(probabilities.argmax().item()); forwards[i]+=1
                 if policy=="always_jev" or float(probabilities.max().item())>=threshold:
                     envs[i].step(MODES[0]+'{"action":"decide","state":"Original context"}',e["candidates"][best]["value"])
-                    traces[i].append({"kind":"baseline_decision","probabilities":probabilities.cpu().tolist()})
+                    traces[i].append({"kind":"baseline_decision","probabilities":probabilities.cpu().tolist(),"candidates":e["candidates"],"choice":best})
             active=[i for i in active if not envs[i].done]
             if not active: continue
         prompts=[model.prompt_ids(envs[i].messages) for i in active]

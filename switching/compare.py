@@ -71,7 +71,7 @@ def main():
     def attach_gold(results,episodes):
         for r,row in zip(results,episodes):
             for action in r["trace"]:
-                if action["kind"]=="decision":
+                if action["kind"] in {"decision","baseline_decision"}:
                     target=row["answer"] if action["candidates"]==row["candidates"] else row["decision_stages"][0]["expected"]
                     action["gold_index"]=next(i for i,c in enumerate(action["candidates"]) if c["value"]==target)
         return results

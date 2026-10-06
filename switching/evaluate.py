@@ -23,9 +23,13 @@ def summary(records):
     brier=[]
     for record in records:
         for action in record["trace"]:
-            if action["kind"]=="decision" and "gold_index" in action:
+            if action["kind"] in {"decision","baseline_decision"} and "gold_index" in action:
                 brier.append(sum((p-int(i==action["gold_index"]))**2 for i,p in enumerate(action["probabilities"])))
-    return {"count":n,"accuracy":sum(correct)/n,"accuracy_95_bootstrap":[boot[25],boot[974]],"mean_tokens":sum(r["tokens"] for r in records)/n,"mean_forward_passes":sum(r["forwards"] for r in records)/n,"seconds_per_episode_amortized":sum(r["batch_seconds"]/r["batch_size"] for r in records)/n,"brier_score":sum(brier)/len(brier) if brier else None,"by_behavior":by_behavior,"errors":dict(collections.Counter(r["error"] for r in records if r.get("error"))),"latency_note":"Batch latency divided by batch size is throughput, not individual request latency. First batch is retained separately as cold latency."}
+    acquisition={}
+    for behavior,action in (("clarification","asked"),("lookup","lookups")):
+        subset=[r for r in records if r["behavior"]==behavior]
+        acquisition[behavior]=sum(bool(r.get(action)) and r["correct"] and r["grounded"] for r in subset)/len(subset) if subset else None
+    return {"count":n,"accuracy":sum(correct)/n,"accuracy_95_bootstrap":[boot[25],boot[974]],"mean_tokens":sum(r["tokens"] for r in records)/n,"mean_forward_passes":sum(r["forwards"] for r in records)/n,"mean_transitions":sum(sum(a!=b for a,b in zip(r.get("modes",[]),r.get("modes",[])[1:])) for r in records)/n,"acquisition_success":acquisition,"seconds_per_episode_amortized":sum(r["batch_seconds"]/r["batch_size"] for r in records)/n,"brier_score":sum(brier)/len(brier) if brier else None,"by_behavior":by_behavior,"errors":dict(collections.Counter(r["error"] for r in records if r.get("error"))),"latency_note":"Batch latency divided by batch size is throughput, not individual request latency. First batch is retained separately as cold latency."}
 
 def main():
     p=argparse.ArgumentParser();p.add_argument("--checkpoint",required=True);p.add_argument("--data",default="data/test.jsonl");p.add_argument("--config",default="configs/experiment.json");p.add_argument("--output",required=True)
@@ -49,7 +53,7 @@ def main():
         results=rollout_group(model,batch,sample=False,policy=args.policy,threshold=args.threshold or .8)
         for row,result in zip(batch,results):
             for action in result["trace"]:
-                if action["kind"]=="decision":
+                if action["kind"] in {"decision","baseline_decision"}:
                     target=row["answer"] if action["candidates"]==row["candidates"] else row["decision_stages"][0]["expected"]
                     action["gold_index"]=next(i for i,c in enumerate(action["candidates"]) if c["value"]==target)
         records.extend(results)
