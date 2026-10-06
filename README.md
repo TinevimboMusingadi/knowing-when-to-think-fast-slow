@@ -14,8 +14,10 @@ SFT completed 438 optimizer updates on a four-chip preemptible TPU. Real GRPO
 reached step 3 and stopped after its gradient guard rejected a non-finite update.
 Only four context-acquisition episodes were evaluated before the comparison
 timed out; that sample does not establish a performance gain. The TPU was deleted.
-Offline numerical and evaluation repairs have been tested on CPU, but have not
-been verified by a subsequent Qwen3-1.7B TPU run.
+A bounded Qwen3-1.7B TPU restart from SFT with a fresh optimizer completed one
+finite RL update. Its second update timed out; multi-step stability and any
+performance gain remain unproven. The restart TPU was also deleted.
+See [the measured recovery report](docs/rl-restart-report.json).
 The initial tasks are verified arithmetic and controlled context fixtures.
 They do not establish general-purpose reasoning or autonomous tool competence.
 
@@ -31,6 +33,10 @@ independent teardown deadline preserves the $50 ceiling and $5 storage reserve.
 Prior compute is conservatively bounded at $43.19 using the audited deletion
 completion timestamp; this is not an actual billing total. The 60-example
 comparison remains pending.
+The recorded recovery cost bound was $1.76, bringing the cumulative compute
+bound to $44.95 while preserving the $5 storage reserve. No additional paid
+attempt fits that conservative allocation until billing is reconciled or the
+experiment budget is revised.
 
 ## Data
 

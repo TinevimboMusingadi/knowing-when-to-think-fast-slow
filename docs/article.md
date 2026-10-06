@@ -113,10 +113,29 @@ weights, and mode rows while preserving base weights. This regression probe
 does not prove that the original 1.7B TPU failure is resolved: the exact failing
 rollout was not saved. New runs now retain sampled traces and numerical diagnostics.
 
+A subsequent, tightly bounded TPU restart loaded the best SFT checkpoint with a
+fresh optimizer and completed one finite GRPO update in about 222 seconds.
+Checksum-verified checkpoint comparisons found changes in 224 LoRA tensors and
+the mode-token embedding; the frozen reference matched SFT exactly. The decision
+head was unchanged after this first warmup update. Four of eight recorded rollout
+groups had varied rewards, providing a relative-reward signal; one sampled action
+failed JSON parsing and received a penalty. The second update did not complete
+before the independent stage timeout. No recorded numerical check failed, but
+one successful update cannot establish multi-step stability. The bottleneck in
+the unfinished update remains unverified. The TPU was deleted, and the
+[sanitized recovery report](rl-restart-report.json) records the evidence.
+
+This restart's conservative compute bound was $1.76, bringing the cumulative
+compute bound to $44.95 while retaining $5 for storage. These figures use the
+on-demand rate plus a margin and include creation through audited deletion;
+they are not billing totals. Further paid training requires reconciling actual
+spending or revising the experiment budget.
+
 A reproducible 60-episode holdout contains ten episodes from each behavior,
 with a separate 30-episode validation subset for choosing the confidence
 threshold. It is prepared, not evaluated. The full 1.7B weights are not cached
-locally, and no new paid resource was created for the repair. A complete
+locally. The offline repair itself required no paid resource; the subsequent
+bounded TPU restart is reported above. A complete
 comparison and any accuracy/compute improvement remain unestablished.
 The final report must distinguish warmed
 inference from compilation, include failures, and report billing separately from

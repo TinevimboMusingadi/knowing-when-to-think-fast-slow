@@ -1,0 +1,61 @@
+{
+  "run_id": "20261006-223323",
+  "source_sft": "gs://keeper-file-storage/knowing-when-to-switch/20261006-122830/checkpoints/step-000150-best-sft-rank0-565877d3",
+  "fresh_optimizer": true,
+  "local_tests_passed": 52,
+  "completed_optimizer_updates": 1,
+  "metrics_rank0": [
+    {
+      "phase": "rl",
+      "step": 1,
+      "loss": 4.471122650784309e-06,
+      "gradient_norm": 0.0023858430795371532,
+      "seconds_optimizer_update": 221.88118654600004,
+      "reward": -0.034,
+      "tokens": 68,
+      "equal_reward_group": true,
+      "timestamp": 1791326552.9582736
+    }
+  ],
+  "exit_code": 124,
+  "stop_reason": "Independent RL stage time limit; second update did not complete.",
+  "recorded_nonfinite_checks": 0,
+  "recorded_gradient_refusals": 0,
+  "recorded_rollout_groups": 8,
+  "groups_with_reward_variation": 4,
+  "rollout_parse_errors": 1,
+  "parameter_update_proof": {
+    "run_id": "20261006-223323",
+    "step": 1,
+    "phase": "rl",
+    "checkpoint": "step-000001-latest-rank0-bc93e9e7",
+    "all_trainable_finite": true,
+    "changed_lora_tensors": 224,
+    "changed_head_tensors": 0,
+    "changed_other_trainable_tensors": 1,
+    "max_trainable_delta": 9.5367431640625e-07,
+    "reference_matches_sft": true,
+    "optimizer_state_entries": 253,
+    "base_checkpoint_checksums_verified": true,
+    "rl_checkpoint_checksums_verified": true,
+    "limitation": "Parameter update evidence only; no held-out performance comparison."
+  },
+  "resource_deleted_at": "2026-10-06T22:52:33.069085848Z",
+  "pilot_compute_upper_bound_usd": 1.7621391813596086,
+  "total_compute_upper_bound_usd": 44.94991904476483,
+  "accounting": "Creation through audited deletion completion; on-demand bound plus 15%; not billing.",
+  "limitations": [
+    "Only one completed update; multi-step stability remains unproven.",
+    "Decision head unchanged after first warmup update.",
+    "Second update timed out before likelihood checks; bottleneck location unverified.",
+    "No balanced 60-example benchmark or RL performance gain established."
+  ],
+  "verified_replica_completion_markers": [
+    "step-000001-latest-rank0-bc93e9e7/COMPLETE",
+    "step-000001-latest-rank1-096ff6d5/COMPLETE",
+    "step-000001-latest-rank2-c9e76848/COMPLETE",
+    "step-000001-latest-rank3-18b2426f/COMPLETE"
+  ],
+  "checkpoint_prefix": "gs://keeper-file-storage/knowing-when-to-switch/20261006-223323/checkpoints/",
+  "post_run_regression_tests_passed": 53
+}

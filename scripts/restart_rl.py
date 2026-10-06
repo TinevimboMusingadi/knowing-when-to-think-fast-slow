@@ -11,6 +11,16 @@ import tarfile
 import cloud
 
 
+def restart_allowance(prior, requested):
+    allowance = min(requested, 45 - prior)
+    # Observed provisioning/setup + first update/validation + teardown require
+    # roughly fourteen minutes. Refuse an attempt that cannot reach useful evidence.
+    minimum = cloud.RATE_BOUND * 1.15 * 14 / 60
+    if requested <= 0 or allowance < minimum:
+        raise RuntimeError("insufficient compute allowance for setup and one measured RL update; reconcile billing or revise budget")
+    return allowance
+
+
 def startup(session, uri, checkpoint):
     run = session["run_id"]
     prefix = f"gs://{cloud.BUCKET}/knowing-when-to-switch/{run}"
@@ -49,9 +59,7 @@ def main():
         if old["state"] == "created":
             raise RuntimeError("unreconciled prior session; verify deletion before restarting")
         prior += old.get("estimated_compute_upper_bound", 0)
-    allowance = min(args.max_dollars, 45 - prior)
-    if allowance <= 0 or args.max_dollars <= 0:
-        raise RuntimeError("no compute allowance after preserving the $5 storage reserve")
+    allowance = restart_allowance(prior, args.max_dollars)
     from preflight import audit
     audit(root)
     source = f"gs://{cloud.BUCKET}/knowing-when-to-switch/{args.source_run}"
