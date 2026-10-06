@@ -1,7 +1,12 @@
 """Batched rollouts and executable mode switching, shared by RL and evaluation."""
 import time
 import torch
+from transformers import StoppingCriteria,StoppingCriteriaList
 from .protocol import EpisodeEnv, MODES, parse_action,decision_state
+
+class StopAtDecision(StoppingCriteria):
+    def __init__(self,width,mode_id):self.width=width;self.mode_id=mode_id
+    def __call__(self,ids,scores,**kwargs):return ids[:,self.width]==self.mode_id
 
 def synchronize(device):
     if device.type == "xla":
@@ -26,11 +31,6 @@ def rollout_group(model, episodes, max_tokens=512, max_transitions=4, max_lookup
     traces=[[] for _ in episodes]; tokens=[0]*len(episodes); forwards=[0]*len(episodes)
     sync_start=time.perf_counter(); synchronize(device); start=time.perf_counter()
     model.eval()
-    from transformers import StoppingCriteria,StoppingCriteriaList
-    class StopAtDecision(StoppingCriteria):
-        def __init__(self,width):self.width=width
-        def __call__(self,ids,scores,**kwargs):
-            return ids[:,self.width]==model.tokenizer.convert_tokens_to_ids(MODES[0])
     for action_index in range(8):
         active=[i for i,e in enumerate(envs) if not e.done and tokens[i]<max_tokens]
         if not active: break
@@ -59,7 +59,7 @@ def rollout_group(model, episodes, max_tokens=512, max_transitions=4, max_lookup
         remaining=min(max_tokens-tokens[i] for i in active)
         length=min(remaining,2048-width)
         with torch.no_grad():
-            outputs=model.lm.generate(input_ids=input_ids,attention_mask=attention,max_new_tokens=length,do_sample=sample,**({"temperature":1.0,"top_p":1.0,"top_k":0} if sample else {}),pad_token_id=model.tokenizer.pad_token_id,eos_token_id=model.tokenizer.convert_tokens_to_ids("<|im_end|>"),stopping_criteria=StoppingCriteriaList([StopAtDecision(width)]),use_cache=True)
+            outputs=model.lm.generate(input_ids=input_ids,attention_mask=attention,max_new_tokens=length,do_sample=sample,**({"temperature":1.0,"top_p":1.0,"top_k":0} if sample else {}),pad_token_id=model.tokenizer.pad_token_id,eos_token_id=model.tokenizer.convert_tokens_to_ids("<|im_end|>"),stopping_criteria=StoppingCriteriaList([StopAtDecision(width,model.tokenizer.convert_tokens_to_ids(MODES[0]))]),use_cache=True)
         for batch_index,i in enumerate(active):
             generated=outputs[batch_index,width:].cpu().tolist()
             if generated and generated[0]==model.tokenizer.convert_tokens_to_ids(MODES[0]):generated=generated[:1]
@@ -132,7 +132,7 @@ class SessionRuntime:
             prompt=self.model.prompt_ids(s["messages"])
             if len(prompt)>=2048:break
             ids=torch.tensor([prompt],device=device)
-            with torch.no_grad():output=self.model.lm.generate(input_ids=ids,attention_mask=torch.ones_like(ids),do_sample=False,max_new_tokens=min(remaining,2048-len(prompt)),eos_token_id=self.model.tokenizer.convert_tokens_to_ids("<|im_end|>"),pad_token_id=self.model.tokenizer.pad_token_id,stopping_criteria=StoppingCriteriaList([StopAtDecision(len(prompt))]),use_cache=True)
+            with torch.no_grad():output=self.model.lm.generate(input_ids=ids,attention_mask=torch.ones_like(ids),do_sample=False,max_new_tokens=min(remaining,2048-len(prompt)),eos_token_id=self.model.tokenizer.convert_tokens_to_ids("<|im_end|>"),pad_token_id=self.model.tokenizer.pad_token_id,stopping_criteria=StoppingCriteriaList([StopAtDecision(len(prompt),self.model.tokenizer.convert_tokens_to_ids(MODES[0]))]),use_cache=True)
             new=output[0,len(prompt):];s["tokens"]+=len(new);s["actions"]+=1
             text=self.model.tokenizer.decode(new,skip_special_tokens=False).removesuffix("<|im_end|>").strip()
             try:mode,action=parse_action(text)
