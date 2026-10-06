@@ -71,7 +71,9 @@ def main():
     def attach_gold(results,episodes):
         for r,row in zip(results,episodes):
             for action in r["trace"]:
-                if action["kind"]=="decision":action["gold_index"]=next(i for i,c in enumerate(row["candidates"]) if c["value"]==row["answer"])
+                if action["kind"]=="decision":
+                    target=row["answer"] if action["candidates"]==row["candidates"] else row["decision_stages"][0]["expected"]
+                    action["gold_index"]=next(i for i,c in enumerate(action["candidates"]) if c["value"]==target)
         return results
     try:
         model.restore_trainable(sft);budget.check()

@@ -15,6 +15,14 @@ def candidates(answer, rng):
     rng.shuffle(values)
     return [{"id": f"c{i}", "value": value, "text": str(value)} for i, value in enumerate(values)]
 
+def add_triage(row):
+    if row["behavior"]=="reasoning" and int(row["id"].rsplit("-",1)[-1])%2==0 and not row.get("decision_stages"):
+        row["decision_stages"]=[{"candidates":[{"id":"reason","value":"reason","text":"Multi-step reasoning is needed before the final answer"},{"id":"direct","value":"direct","text":"The answer is immediately available without further reasoning"}],"expected":"reason"}]
+        row["steps"].insert(0,{"completion":MODES[0],"decision":"reason"})
+        row["prompt"]="First provide a typed assessment of whether further reasoning is needed, then solve this problem. "+row["prompt"]
+        row["optimal_actions"]=len(row["steps"])
+    return row
+
 def make_episode(split, behavior, index):
     seed = int(hashlib.sha256(f"{split}/{behavior}/{index}".encode()).hexdigest()[:16], 16)
     rng = random.Random(seed)
@@ -67,7 +75,7 @@ def make_episode(split, behavior, index):
     row["optimal_actions"] = len(row["steps"])
     for step in row["steps"]:
         if "decision" in step:step["completion"]=MODES[0]
-    return row
+    return add_triage(row)
 
 def reused_rows(source, gold_file=None):
     """Reuse only prompts whose answer we independently calculate; never import completions."""
@@ -134,7 +142,9 @@ def build(output, source=None, gold_file=None):
                     row["optimal_actions"]=len(row["steps"])
                     for step in row["steps"]:
                         if "decision" in step:step["completion"]=MODES[0]
-                rows.append(row)
+                if row.get("decision_stages") and row["steps"][0].get("decision")!="reason":
+                    row.pop("decision_stages")
+                rows.append(add_triage(row))
         random.Random(42).shuffle(rows)
         path = output / f"{split}.jsonl"
         path.write_text("".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows), encoding="utf-8")

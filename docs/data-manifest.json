@@ -10,7 +10,7 @@
   "splits": {
     "train": {
       "count": 8000,
-      "sha256": "b8bf126f8a769c0ddf878677fa611fa37bd2d4abe1f5f4c6cbc83f07fb819148",
+      "sha256": "68f2de569b2cdbe3a6d9707ec3cd3906b43a389878734c33031bed545dd9f13c",
       "behaviors": {
         "reasoning": 2000,
         "direct": 1000,
@@ -22,7 +22,7 @@
     },
     "val": {
       "count": 600,
-      "sha256": "4b42ccfd6142a4b9bcf126200dd760e224f49788a5b5a3de5d9954f615b51864",
+      "sha256": "a407224f1831c71860ad214df69c43caf603bfcc1944358300d404bf2288cd88",
       "behaviors": {
         "lookup": 100,
         "clarification": 100,
@@ -34,7 +34,7 @@
     },
     "test": {
       "count": 600,
-      "sha256": "ead6f4943434769246020fbedc34eecba952c15afe590b049a357a2c398de8ca",
+      "sha256": "267d54cea44292a83dbcad47a007ad1ed237c789c1edf11333d416e98545bf06",
       "behaviors": {
         "lookup": 100,
         "clarification": 100,

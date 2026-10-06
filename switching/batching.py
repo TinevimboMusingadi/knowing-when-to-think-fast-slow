@@ -12,8 +12,8 @@ def supervised_items(model, episodes):
             generation.append((prompt + completion, [-100] * len(prompt) + completion))
             _, action = parse_action(step["completion"])
             if action["action"] == "decide":
-                target = next(i for i,c in enumerate(episode["candidates"]) if c["value"] == step["decision"])
-                decisions.append((decision_state(env.messages), episode["candidates"], target))
+                target = next(i for i,c in enumerate(env.current_candidates) if c["value"] == step["decision"])
+                decisions.append((decision_state(env.messages), env.current_candidates, target))
             env.step(step["completion"], step.get("decision"))
     return generation, decisions
 

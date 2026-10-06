@@ -22,6 +22,13 @@ class CoreTests(unittest.TestCase):
             env=EpisodeEnv(row);step=row["steps"][0];env.step(step["completion"],step["decision"])
             self.assertTrue(env.reward(0)[1]["correct"])
 
+    def test_jev_can_continue_into_reasoning(self):
+        row=make_episode("train","reasoning",2);env=EpisodeEnv(row)
+        first=row["steps"][0];env.step(first["completion"],first["decision"])
+        self.assertFalse(env.done)
+        for step in row["steps"][1:]:env.step(step["completion"],step.get("decision"))
+        self.assertTrue(env.reward(0)[1]["correct"]);self.assertEqual(env.modes[:2],[MODES[0],MODES[2]])
+
     def test_context_cannot_be_skipped_for_reward(self):
         row=make_episode("test","lookup",0);env=EpisodeEnv(row)
         env.step(encode_action(MODES[1],"answer",value=row["answer"]))

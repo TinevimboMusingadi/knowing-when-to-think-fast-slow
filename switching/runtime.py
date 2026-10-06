@@ -22,7 +22,7 @@ def token_logps(model, prompt, completion, bucket=2048):
 
 def rollout_group(model, episodes, max_tokens=512, max_transitions=4, max_lookups=2, sample=True, policy="learned", threshold=0.8):
     device=next(model.parameters()).device
-    envs=[EpisodeEnv(e,max_transitions,max_lookups) for e in episodes]
+    envs=[EpisodeEnv({k:v for k,v in e.items() if k!="decision_stages"} if policy!="learned" else e,max_transitions,max_lookups) for e in episodes]
     traces=[[] for _ in episodes]; tokens=[0]*len(episodes); forwards=[0]*len(episodes)
     sync_start=time.perf_counter(); synchronize(device); start=time.perf_counter()
     model.eval()
@@ -75,13 +75,14 @@ def rollout_group(model, episodes, max_tokens=512, max_transitions=4, max_lookup
                 mode,action=parse_action(text)
                 if mode==MODES[0]:
                     state=decision_state(envs[i].messages)
-                    state_length=max(len(model.tokenizer.encode(state+"\nCandidate: "+c["text"],add_special_tokens=False)) for c in episodes[i]["candidates"])
+                    current_candidates=envs[i].current_candidates
+                    state_length=max(len(model.tokenizer.encode(state+"\nCandidate: "+c["text"],add_special_tokens=False)) for c in current_candidates)
                     bucket=next(b for b in (512,1024,2048) if b>=state_length)
-                    with torch.no_grad(): logits=model.decision_logits([state],[episodes[i]["candidates"]],bucket=bucket)
+                    with torch.no_grad(): logits=model.decision_logits([state],[current_candidates],bucket=bucket)
                     probabilities=logits[0].softmax(-1)
                     choice=int(torch.multinomial(probabilities,1).item()) if sample else int(probabilities.argmax().item())
-                    decision=episodes[i]["candidates"][choice]["value"]; forwards[i]+=1
-                    traces[i].append({"kind":"decision","state":state,"bucket":bucket,"candidates":episodes[i]["candidates"],"choice":choice,"probabilities":probabilities.cpu().tolist()})
+                    decision=current_candidates[choice]["value"]; forwards[i]+=1
+                    traces[i].append({"kind":"decision","state":state,"bucket":bucket,"candidates":current_candidates,"choice":choice,"probabilities":probabilities.cpu().tolist()})
             except (ValueError,KeyError,StopIteration): pass
             envs[i].step(text,decision)
     synchronize(device); elapsed=time.perf_counter()-start
@@ -111,7 +112,9 @@ class SessionRuntime:
         from .protocol import SYSTEM,encode_action
         if session_id in self.sessions:raise ValueError("session already exists")
         if "answer" in request:raise ValueError("public request must not contain a gold answer")
-        self.sessions[session_id]={"messages":[{"role":"system","content":SYSTEM},{"role":"user","content":request["prompt"]}],"candidates":request.get("candidates",[]),"tokens":0,"modes":[],"lookups":0,"actions":0,"paused":False,"finished":False}
+        stages=request.get("decision_stages",[])
+        if any("expected" in stage for stage in stages):raise ValueError("public decision stages must not contain gold labels")
+        self.sessions[session_id]={"messages":[{"role":"system","content":SYSTEM},{"role":"user","content":request["prompt"]}],"candidates":request.get("candidates",[]),"decision_stages":stages,"decision_index":0,"tokens":0,"modes":[],"lookups":0,"actions":0,"paused":False,"finished":False}
         return self._advance(session_id,lookup)
 
     def resume(self,session_id,reply,lookup=None):
@@ -129,7 +132,7 @@ class SessionRuntime:
             prompt=self.model.prompt_ids(s["messages"])
             if len(prompt)>=2048:break
             ids=torch.tensor([prompt],device=device)
-            with torch.no_grad():output=self.model.lm.generate(input_ids=ids,attention_mask=torch.ones_like(ids),do_sample=False,max_new_tokens=min(remaining,2048-len(prompt)),eos_token_id=self.model.tokenizer.convert_tokens_to_ids("<|im_end|>"),pad_token_id=self.model.tokenizer.pad_token_id,use_cache=True)
+            with torch.no_grad():output=self.model.lm.generate(input_ids=ids,attention_mask=torch.ones_like(ids),do_sample=False,max_new_tokens=min(remaining,2048-len(prompt)),eos_token_id=self.model.tokenizer.convert_tokens_to_ids("<|im_end|>"),pad_token_id=self.model.tokenizer.pad_token_id,stopping_criteria=StoppingCriteriaList([StopAtDecision(len(prompt))]),use_cache=True)
             new=output[0,len(prompt):];s["tokens"]+=len(new);s["actions"]+=1
             text=self.model.tokenizer.decode(new,skip_special_tokens=False).removesuffix("<|im_end|>").strip()
             try:mode,action=parse_action(text)
@@ -140,11 +143,18 @@ class SessionRuntime:
             if action["action"]=="answer":return self._finish(s,"complete",answer=action["value"])
             if action["action"]=="decide":
                 state=decision_state(s["messages"])
-                length=max(len(self.model.tokenizer.encode(state+"\nCandidate: "+c["text"],add_special_tokens=False)) for c in s["candidates"])
+                intermediate=s["decision_index"]<len(s["decision_stages"])
+                candidates=s["decision_stages"][s["decision_index"]]["candidates"] if intermediate else s["candidates"]
+                if not candidates:return self._finish(s,"unresolved",error="decision candidates missing")
+                length=max(len(self.model.tokenizer.encode(state+"\nCandidate: "+c["text"],add_special_tokens=False)) for c in candidates)
                 if length>2048:return self._finish(s,"unresolved",error="decision context budget exhausted")
                 bucket=next(b for b in (512,1024,2048) if b>=length)
-                with torch.no_grad():probs=self.model.decision_logits([state],[s["candidates"]],bucket=bucket)[0].softmax(-1)
-                chosen=s["candidates"][int(probs.argmax().item())]
+                with torch.no_grad():probs=self.model.decision_logits([state],[candidates],bucket=bucket)[0].softmax(-1)
+                chosen=candidates[int(probs.argmax().item())]
+                if intermediate:
+                    s["decision_index"]+=1
+                    s["messages"].append({"role":"user","content":"Observed typed assessment: "+str(chosen["value"])+". Continue choosing your next mode and solve the original problem."})
+                    continue
                 return self._finish(s,"complete",answer=chosen["value"],candidate_id=chosen["id"],probabilities=probs.cpu().tolist())
             if action["action"]=="ask":
                 s["paused"]=True;return {"status":"awaiting_user","question":action["question"],"session_id":session_id,"modes":s["modes"]}

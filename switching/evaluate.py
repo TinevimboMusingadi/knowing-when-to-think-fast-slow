@@ -49,7 +49,9 @@ def main():
         results=rollout_group(model,batch,sample=False,policy=args.policy,threshold=args.threshold or .8)
         for row,result in zip(batch,results):
             for action in result["trace"]:
-                if action["kind"]=="decision": action["gold_index"]=next(i for i,c in enumerate(row["candidates"]) if c["value"]==row["answer"])
+                if action["kind"]=="decision":
+                    target=row["answer"] if action["candidates"]==row["candidates"] else row["decision_stages"][0]["expected"]
+                    action["gold_index"]=next(i for i,c in enumerate(action["candidates"]) if c["value"]==target)
         records.extend(results)
         with (output/f"{args.policy}.jsonl").open("a") as stream:
             for result in results:stream.write(json.dumps(result)+"\n")

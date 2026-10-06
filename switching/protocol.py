@@ -64,6 +64,13 @@ class EpisodeEnv:
         self.max_transitions = max_transitions
         self.max_lookups = max_lookups
         self.error = None
+        self.decision_index=0
+        self.routing_errors=0
+
+    @property
+    def current_candidates(self):
+        stages=self.episode.get("decision_stages",[])
+        return stages[self.decision_index]["candidates"] if self.decision_index<len(stages) else self.episode.get("candidates",[])
 
     def step(self, text, decision=None):
         if self.done:
@@ -81,9 +88,15 @@ class EpisodeEnv:
             if kind == "answer":
                 self.answer, self.done = action["value"], True
             elif kind == "decide":
-                if decision is None or decision not in [c["value"] for c in self.episode.get("candidates", [])]:
+                if decision is None or decision not in [c["value"] for c in self.current_candidates]:
                     raise ValueError("invalid typed decision")
-                self.answer, self.done = decision, True
+                stages=self.episode.get("decision_stages",[])
+                if self.decision_index<len(stages):
+                    stage=stages[self.decision_index]
+                    self.routing_errors+=int(decision!=stage["expected"])
+                    self.decision_index+=1
+                    self.messages.append({"role":"user","content":"Observed typed assessment: "+str(decision)+". Continue choosing your next mode and solve the original problem."})
+                else:self.answer,self.done=decision,True
             elif kind == "ask":
                 self.asked = True
                 reply = self.episode.get("clarification", "No additional information is available.")
@@ -113,4 +126,5 @@ class EpisodeEnv:
         if self.error:
             reward -= 0.5
         reward -= 0.05 * max(0, len(self.modes) - self.episode.get("optimal_actions", 1))
+        reward -= .2*self.routing_errors
         return reward, {"correct": bool(correct), "grounded": grounded, "error": self.error}
