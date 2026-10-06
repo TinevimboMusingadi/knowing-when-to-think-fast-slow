@@ -11,6 +11,7 @@ import time
 
 def main():
     p=argparse.ArgumentParser();p.add_argument("--run",required=True);p.add_argument("--supervisor",type=int,required=True);p.add_argument("--evaluation",type=int,required=True)
+    p.add_argument("--restart-rl",action="store_true");p.add_argument("--started",type=float)
     args=p.parse_args()
     if not re.fullmatch(r"\d{8}-\d{6}",args.run):raise ValueError("invalid experiment ID")
     root=Path("runs")/args.run;name="kws-"+args.run
@@ -20,20 +21,34 @@ def main():
     supervisor=Path(f"/proc/{args.supervisor}/cmdline").read_bytes().replace(b"\0",b" ").decode()
     evaluation=Path(f"/proc/{args.evaluation}/cmdline").read_bytes().replace(b"\0",b" ").decode()
     parent=subprocess.check_output(["ps","-o","ppid=","-p",str(args.evaluation)],text=True).strip()
-    if "/startup-script" not in supervisor or "timeout 900 python -m switching.evaluate" not in evaluation or str(root) not in evaluation or int(parent)!=args.supervisor:
+    supervised=("tpu_rl_handoff.py" in supervisor and args.run in supervisor) if args.restart_rl else "/startup-script" in supervisor
+    stage=("switching.train" in evaluation and "--phase rl" in evaluation) if args.restart_rl else "timeout 900 python -m switching.evaluate" in evaluation
+    if not supervised or not stage or str(root) not in evaluation or int(parent)!=args.supervisor or (args.restart_rl and args.started is None):
         raise ValueError("process ownership mismatch; no process was signaled")
     # Pause the old supervisor before its failed evaluation can trigger teardown.
     os.kill(args.supervisor,signal.SIGSTOP)
-    os.kill(args.evaluation,signal.SIGTERM)
+    pairs=[list(map(int,line.split())) for line in subprocess.check_output(["ps","-eo","pid=,ppid="],text=True).splitlines()]
+    descendants=[args.evaluation]
+    for pid in descendants:
+        descendants.extend(child for child,ppid in pairs if ppid==pid)
+    snapshots={pid:Path(f"/proc/{pid}/cmdline").read_bytes() for pid in descendants if Path(f"/proc/{pid}/cmdline").exists()}
+    for pid in reversed(descendants):
+        try:os.kill(pid,signal.SIGTERM)
+        except ProcessLookupError:pass
     time.sleep(2)
+    for pid,cmd in snapshots.items():
+        path=Path(f"/proc/{pid}/cmdline")
+        if path.exists() and path.read_bytes()==cmd:
+            try:os.kill(pid,signal.SIGKILL)
+            except ProcessLookupError:pass
     os.kill(args.supervisor,signal.SIGKILL)
     prefix=f"gs://keeper-file-storage/knowing-when-to-switch/{args.run}"
     from switching.storage import Budget
     config=json.loads(Path("configs/experiment.json").read_text())
     metrics=[json.loads(line) for line in (root/"metrics.jsonl").read_text().splitlines()]
-    evaluation_started=max(row["timestamp"] for row in metrics if row["phase"]=="sft")
-    Budget(root/"budget.json",4.8,"evaluation",config["budget"],start=evaluation_started).finish()
-    (root/"handoff.json").write_text(json.dumps({"interrupted_sft_evaluation":True,"reason":"No first rollout result after several minutes; replacing dynamic decoding with static KV cache.","time":time.time()},indent=2))
+    stage_started=args.started if args.restart_rl else max(row["timestamp"] for row in metrics if row["phase"]=="sft")
+    Budget(root/"budget.json",4.8,"rl" if args.restart_rl else "evaluation",config["budget"],start=stage_started).finish()
+    (root/("rl-restart.json" if args.restart_rl else "handoff.json")).write_text(json.dumps({"interrupted_stage":"rl" if args.restart_rl else "evaluation","reason":"Establish fixed cache and explicit lazy execution step boundaries before real GRPO.","time":time.time()},indent=2))
     try:
         subprocess.run([sys.executable,"-m","unittest","discover","-s","tests","-v"],check=True)
         sft=root/"checkpoints"/json.loads((root/"checkpoints/best-sft-rank0.json").read_text())["directory"]

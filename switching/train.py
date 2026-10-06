@@ -217,18 +217,24 @@ def worker(index,args):
             reference=getattr(checkpoints,"loaded_reference",None) or model.trainable_state()
             for cursor in range(progress["cursor"],config["max_rl_steps"]):
                 check_budget(); episode=rows[(cursor*world+rank)%len(rows)]
+                rl_started=time.perf_counter()
+                metric(root/f"rl-progress-rank{rank}.jsonl",{"event":"rollout-start","cursor":cursor,"behavior":episode["behavior"],"timestamp":time.time()})
                 samples=rollout_group(model,[episode]*config["group_size"],config["max_generated_tokens"],config["max_transitions"],config["max_lookups"])
+                metric(root/f"rl-progress-rank{rank}.jsonl",{"event":"rollout-complete","cursor":cursor,"rewards":[s["reward"] for s in samples],"tokens":[s["tokens"] for s in samples],"errors":[s["error"] for s in samples],"seconds":time.perf_counter()-rl_started,"timestamp":time.time()})
                 adv=advantages([s["reward"] for s in samples]).to(device)
                 with torch.no_grad(): old=[action_logps(model,s["trace"]).detach() for s in samples]
-                with model.reference(reference),torch.no_grad(): ref=[action_logps(model,s["trace"]).detach() for s in samples]
+                synchronize(device)
+                with model.reference(reference),torch.no_grad():
+                    ref=[action_logps(model,s["trace"]).detach() for s in samples]
+                    synchronize(device)
                 model.eval()  # Deterministic likelihoods: LoRA/head dropout disabled.
                 optimizer.zero_grad(set_to_none=True); total_loss=0
                 for j,sample in enumerate(samples):
                     new=action_logps(model,sample["trace"])
                     loss=grpo_loss(new,old[j],ref[j],adv[j],config["clip_epsilon"],config["kl_coefficient"])/len(samples)
                     update(loss); total_loss+=float(loss.item())
-                optimizer_step(); progress["cursor"]=cursor+1
-                if rank==0: metric(root/"metrics.jsonl",{"phase":"rl","step":progress["step"],"loss":total_loss,"reward":sum(s["reward"] for s in samples)/len(samples),"tokens":sum(s["tokens"] for s in samples),"equal_reward_group":bool(torch.all(adv==0).item())})
+                gradient_norm=optimizer_step(); progress["cursor"]=cursor+1
+                if rank==0: metric(root/"metrics.jsonl",{"phase":"rl","step":progress["step"],"loss":total_loss,"gradient_norm":gradient_norm,"seconds_optimizer_update":time.perf_counter()-rl_started,"reward":sum(s["reward"] for s in samples)/len(samples),"tokens":sum(s["tokens"] for s in samples),"equal_reward_group":bool(torch.all(adv==0).item()),"timestamp":time.time()})
                 if progress["step"]%config["checkpoint_interval"]==0 or progress["step"]==1:
                     value=validate(); save("latest")
                     if value<best: best=value; save("best-rl")

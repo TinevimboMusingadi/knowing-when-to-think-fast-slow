@@ -32,6 +32,11 @@ def static_generate(lm, prompts, max_new_tokens, pad_id, eos_id, jev_id=None,
         generated.append(token)
         finished=finished|(token==eos_id)
         if step==0 and jev_id is not None:finished=finished|(token==jev_id)
+        if device.type=="xla":
+            # Materialize the live cache and sever lazy dependencies on the
+            # previous step; .item() alone does not establish an XLA step.
+            import torch_xla
+            torch_xla.sync(wait=True)
         if bool(finished.all().item()) or step+1==max_new_tokens:break
         valid=valid|((keys[None,:]==cursor)&(~finished[:,None]))
         mask=torch.zeros((batch,1,1,capacity),device=device,dtype=dtype).masked_fill(~valid[:,None,None,:],torch.finfo(dtype).min)
