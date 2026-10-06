@@ -1,0 +1,58 @@
+{
+  "scope": "CPU fixed-action numerical integration probe; random tiny Qwen3, not Qwen3-1.7B evaluation",
+  "seed": 42,
+  "group_size": 4,
+  "steps": [
+    {
+      "step": 1,
+      "loss": 0.0,
+      "gradient_norm": 4.475372314453125
+    },
+    {
+      "step": 2,
+      "loss": 0.0068069398403167725,
+      "gradient_norm": 3.893998861312866
+    },
+    {
+      "step": 3,
+      "loss": 0.08989459276199341,
+      "gradient_norm": 2.7140777111053467
+    },
+    {
+      "step": 4,
+      "loss": 0.7623431384563446,
+      "gradient_norm": 12.600111961364746
+    }
+  ],
+  "original_overflow": {
+    "finite_loss": false,
+    "finite_gradient": false
+  },
+  "repaired_overflow": {
+    "finite_loss": true,
+    "finite_gradient": true,
+    "tail_bound": 20
+  },
+  "changed_lora_tensors": 8,
+  "changed_head_tensors": 28,
+  "changed_mode_rows": true,
+  "base_weights_unchanged": true,
+  "all_trainable_finite": true,
+  "limitations": [
+    "Synthetic fixed actions, not sampled environment rollouts.",
+    "Exponential tails are bounded, which modifies the extreme-tail objective.",
+    "The exact original failing TPU trace was not saved.",
+    "No new TPU run or 1.7B capability benchmark performed."
+  ],
+  "recorded_utc": "2026-10-06T21:26:32.303815+00:00",
+  "regression_tests": {
+    "passed": 51,
+    "failed": 0
+  },
+  "balanced_test_manifest": "evaluation60-manifest.json",
+  "balanced_validation_manifest": "validation30-manifest.json",
+  "public_holdout_regeneration_identical": true,
+  "model_1_7b_weights_cached": false,
+  "paid_resource_created": false,
+  "cpu_sft_to_rl_worker_integration_passed": true
+}

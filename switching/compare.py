@@ -2,6 +2,7 @@
 import argparse
 import json
 import re
+import signal
 from pathlib import Path
 import torch
 from .evaluate import summary
@@ -10,6 +11,30 @@ from .protocol import equivalent
 from .runtime import rollout_group,synchronize
 from .storage import Budget,Checkpoints
 from .train import load_rows
+
+def comparison_report(rows,records,stop_reason=None):
+    targets={row["id"] for row in rows}
+    if len(targets)!=len(rows):raise ValueError("duplicate target IDs")
+    excluded={row["id"] for row in rows if row["behavior"] in {"lookup","clarification"}}
+    paired=set(targets);report={}
+    for name,values in records.items():
+        ids=[r["id"] for r in values]
+        applicable=targets-excluded if name=="base_qwen" else targets
+        if len(set(ids))!=len(ids) or not set(ids).issubset(applicable):raise ValueError("invalid/duplicate evaluation records")
+        paired&=set(ids)|(excluded if name=="base_qwen" else set())
+        entry=summary(values) if values else {"count":0}
+        entry.update(applicable_target=len(applicable),complete=set(ids)==applicable)
+        report[name]=entry
+    report.update(complete=bool(records) and all(report[name]["complete"] for name in records),completed_paired_episodes=len(paired),target_episodes=len(rows),stop_reason=stop_reason,base_applicability="Native base excludes clarification and lookup; excluded tasks count as not applicable, never correct.")
+    return report
+
+def persist_report(output,rows,records,reason=None):
+    report=comparison_report(rows,records,reason)
+    temporary=output/"comparison.tmp"
+    temporary.write_text(json.dumps(report,indent=2),encoding="utf-8")
+    temporary.replace(output/"comparison.json")
+    (output/"progress.json").write_text(json.dumps({"completed_paired_episodes":report["completed_paired_episodes"],"target":len(rows)}))
+    return report
 
 def choose_threshold(fast,slow):
     if [r["id"] for r in fast]!=[r["id"] for r in slow]:raise ValueError("validation records must be paired")
@@ -44,7 +69,16 @@ def native_base(model,episodes):
         import time
         start=time.perf_counter()
         with model.lm.disable_adapter(),torch.no_grad():
-            generated=model.lm.generate(**ids,max_new_tokens=512,do_sample=False,logits_processor=LogitsProcessorList([OriginalVocabulary()]),pad_token_id=model.tokenizer.pad_token_id,use_cache=True)
+            if device.type=="xla":
+                from .decoding import static_generate
+                prompt=ids["input_ids"][0].cpu().tolist()
+                prefill=next(b for b in (512,1024,1536,2048) if b>=len(prompt))
+                length=min(512,2048-prefill)
+                if length<1:raise ValueError("native base prompt exceeds decoding capacity")
+                new=static_generate(model.lm,[prompt],length,model.tokenizer.pad_token_id,model.tokenizer.eos_token_id,suppress_tokens=tuple(range(model.lm.config.vocab_size-3,model.lm.config.vocab_size)))
+                generated=torch.cat((ids["input_ids"],new),dim=1)
+            else:
+                generated=model.lm.generate(**ids,max_new_tokens=512,do_sample=False,logits_processor=LogitsProcessorList([OriginalVocabulary()]),pad_token_id=model.tokenizer.pad_token_id,use_cache=True)
         synchronize(device);elapsed=time.perf_counter()-start
         new=generated[0,ids["input_ids"].shape[1]:];output=model.tokenizer.decode(new,skip_special_tokens=True)
         final=output.split("</think>")[-1].strip()
@@ -55,18 +89,31 @@ def native_base(model,episodes):
     return records
 
 def main():
-    p=argparse.ArgumentParser();p.add_argument("--sft",required=True);p.add_argument("--rl",required=True);p.add_argument("--output",required=True);p.add_argument("--budget-path",required=True);p.add_argument("--hourly-rate",type=float,required=True)
+    p=argparse.ArgumentParser();p.add_argument("--sft",required=True);p.add_argument("--rl");p.add_argument("--output",required=True);p.add_argument("--budget-path");p.add_argument("--hourly-rate",type=float)
     p.add_argument("--config",default="configs/experiment.json");p.add_argument("--data",default="data/test.jsonl");p.add_argument("--validation",default="data/val.jsonl");p.add_argument("--device",choices=["tpu","cpu"],default="tpu");p.add_argument("--batch-size",type=int,default=4)
-    args=p.parse_args();config=json.loads(Path(args.config).read_text());out=Path(args.output);out.mkdir(parents=True,exist_ok=True)
+    p.add_argument("--offline",action="store_true")
+    args=p.parse_args()
+    if bool(args.budget_path)!=bool(args.hourly_rate):p.error("budget path and hourly rate must be supplied together")
+    if args.device=="tpu" and not args.budget_path:p.error("TPU evaluation requires a cost ledger and verified rate")
+    config=json.loads(Path(args.config).read_text());out=Path(args.output);out.mkdir(parents=True,exist_ok=True)
+    if any(out.glob("*.jsonl")):raise ValueError("use a fresh output directory; existing evaluation records are preserved")
+    rows=load_rows(args.data);val=load_rows(args.validation)
+    records={name:[] for name in ("base_qwen","always_direct","always_jev","always_cot","confidence","sft_switch")+(('rl_switch',) if args.rl else ())}
+    persist_report(out,rows,records,"initializing")
     if args.device=="tpu":
         import torch_xla
         device=torch_xla.device();dtype=torch.bfloat16
     else:device=torch.device("cpu");dtype=torch.float32
-    model=SwitchModel.load(config["model"],config["lora_rank"],config["lora_alpha"],dtype).to(device);model.head.to(dtype)
-    manager=Checkpoints(out/"restore");manager.load(args.sft,model);sft=model.trainable_state();manager.load(args.rl,model);rl=model.trainable_state();manager.close()
-    budget=Budget(args.budget_path,args.hourly_rate,"evaluation",config["budget"])
-    rows=load_rows(args.data);val=load_rows(args.validation)[:24]
-    records={name:[] for name in ("base_qwen","always_direct","always_jev","always_cot","confidence","sft_switch","rl_switch")}
+    model=SwitchModel.load(config["model"],config["lora_rank"],config["lora_alpha"],dtype,local_files_only=args.offline).to(device);model.head.to(dtype)
+    manager=Checkpoints(out/"restore");manager.load(args.sft,model);sft=model.trainable_state();rl=None
+    if args.rl:manager.load(args.rl,model);rl=model.trainable_state()
+    manager.close()
+    budget=Budget(args.budget_path,args.hourly_rate,"evaluation",config["budget"]) if args.budget_path else None
+    def check_budget():
+        if budget:budget.check()
+    previous_handler=signal.getsignal(signal.SIGTERM)
+    def terminate(signum,frame):raise KeyboardInterrupt("evaluation terminated")
+    signal.signal(signal.SIGTERM,terminate)
     complete=False;reason=None
     def attach_gold(results,episodes):
         for r,row in zip(results,episodes):
@@ -76,14 +123,14 @@ def main():
                     action["gold_index"]=next(i for i,c in enumerate(action["candidates"]) if c["value"]==target)
         return results
     try:
-        model.restore_trainable(sft);budget.check()
+        model.restore_trainable(sft);check_budget()
         fast=rollout_group(model,val,sample=False,policy="always_jev")
-        budget.check();slow=rollout_group(model,val,sample=False,policy="always_cot")
+        check_budget();slow=rollout_group(model,val,sample=False,policy="always_cot")
         selected=choose_threshold(fast,slow);(out/"threshold.json").write_text(json.dumps(selected,indent=2))
         for offset in range(0,len(rows),args.batch_size):
             batch=rows[offset:offset+args.batch_size]
             for name in records:
-                budget.check()
+                check_budget()
                 model.restore_trainable(rl if name=="rl_switch" else sft)
                 if name=="base_qwen":results=native_base(model,batch)
                 else:
@@ -92,15 +139,14 @@ def main():
                 records[name].extend(results)
                 with (out/f"{name}.jsonl").open("a") as stream:
                     for record in results:stream.write(json.dumps(record)+"\n")
-            (out/"progress.json").write_text(json.dumps({"completed_paired_episodes":offset+len(batch),"target":len(rows)}))
+                persist_report(out,rows,records,"comparison in progress")
         complete=True
-    except RuntimeError as exc:
+    except (RuntimeError,KeyboardInterrupt) as exc:
         reason=str(exc)
     finally:
-        budget.finish()
-        summaries={name:summary(values) for name,values in records.items() if values}
-        summaries.update(complete=complete,stop_reason=reason,target_episodes=len(rows),base_applicability="Native base baseline excludes clarification and lookup because no trained tool/action protocol is attached.")
-        (out/"comparison.json").write_text(json.dumps(summaries,indent=2))
+        if budget:budget.finish()
+        persist_report(out,rows,records,reason)
+        signal.signal(signal.SIGTERM,previous_handler)
     if not complete:raise RuntimeError(reason or "incomplete comparison")
 
 if __name__=="__main__":main()

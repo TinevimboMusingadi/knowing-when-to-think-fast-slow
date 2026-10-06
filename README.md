@@ -10,8 +10,12 @@ retrieved evidence. No decision JSON body is generated on this fast path.
 
 ## Status
 
-Implementation and local verification are in progress. No trained-model
-performance or TPU throughput is claimed until recorded by a real experiment.
+SFT completed 438 optimizer updates on a four-chip preemptible TPU. Real GRPO
+reached step 3 and stopped after its gradient guard rejected a non-finite update.
+Only four context-acquisition episodes were evaluated before the comparison
+timed out; that sample does not establish a performance gain. The TPU was deleted.
+Offline numerical and evaluation repairs have been tested on CPU, but have not
+been verified by a subsequent Qwen3-1.7B TPU run.
 The initial tasks are verified arithmetic and controlled context fixtures.
 They do not establish general-purpose reasoning or autonomous tool competence.
 
@@ -69,6 +73,46 @@ Incomplete comparisons are labeled as partial; never describe a smoke check or
 budget-truncated run as a complete benchmark.
 
 ## Research comparisons
+
+### Offline recovery and smaller evaluation
+
+The loss now computes in FP32, uses `expm1` for the KL estimator, and bounds
+exponential log-ratio tails at 20. This changes the objective outside that range;
+tail counts are recorded. Non-finite inputs/losses are rejected before backward
+on every replica. Gradient norms are inspected before clipping can alter the
+evidence, and RL saves each completed update. Full public sampled traces are
+retained in run artifacts for diagnosing a future failure.
+
+```powershell
+python scripts/offline_probe.py
+python -m unittest discover -s tests -v
+python -m switching.data --output data/procedural-reproduction
+python -m switching.subsets --data data/procedural-reproduction/test.jsonl --output data/test60.jsonl --per-behavior 10
+python -m switching.subsets --data data/procedural-reproduction/val.jsonl --output data/validation30.jsonl --per-behavior 5
+```
+
+These holdouts reproduce the original procedural test/validation episodes
+without any private training source. Test selection contains 10 episodes per
+behavior; validation contains five. Selection uses seeded ID hashes, never
+model results. This reproduction's synthetic training split does **not** replace
+the original 4,000 verified reused training prompts.
+
+With the base weights already cached and a verified local SFT checkpoint:
+
+```powershell
+python -m switching.compare --device cpu --offline --sft checkpoints/best-sft --data data/test60.jsonl --validation data/validation30.jsonl --batch-size 2 --output runs/sft-validation60
+```
+
+Omit `--rl` for an SFT-only comparison. Add a verified local RL checkpoint to
+include RL switching. `--offline` prohibits Hugging Face downloads. The full
+1.7B model is not cached in the current local workspace, so this 60-episode
+benchmark has **not** been run. See [offline recovery evidence](docs/offline-numerics.json).
+CPU checkpoint loading ignores TPU-only random-state metadata. On TPU, the
+native Qwen baseline now uses fixed-cache decoding and suppresses the three
+added mode tokens. Reports are saved after each completed policy batch and on
+interruption; per-policy applicability and completeness are explicit. Use a fresh
+output directory to preserve existing records. No new paid run is authorized
+by these recovery commands.
 
 Evaluate learned SFT and RL switching against static direct, static CoT, static
 JEV, and a validation-selected confidence cascade. Untouched Qwen requires its

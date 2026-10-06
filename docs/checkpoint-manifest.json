@@ -1,0 +1,63 @@
+{
+  "files": {
+    "state.pt": "ee2fa7254bb62124a3c371db8bcc51f389bb082d6844c000287fbb0ba2dba8b2",
+    "tokenizer/chat_template.jinja": "a55ee1b1660128b7098723e0abcd92caa0788061051c62d51cbe87d9cf1974d8",
+    "tokenizer/tokenizer_config.json": "f2fc062694a6c7a37a08f98be995a6643e489b5f7b8924821656759842eacd9b",
+    "tokenizer/tokenizer.json": "20b8a9706b6e54514a5bed090e6281815c7d2de9c2acead5f124b8736c148b8c",
+    "tokenizer/added_tokens.json": "f6df3539d154f44d01c2fce36d8a1a2bfc9e63c61bb308cfb17e0b17c02b45f7",
+    "tokenizer/special_tokens_map.json": "617a59708c8a7dc5557fdb7611df5b3f7e82a5ec023730e2025df37df80b218a",
+    "tokenizer/merges.txt": "8831e4f1a044471340f7c0a83d7bd71306a5b867e95fd870f74d0c5308a904d5",
+    "tokenizer/vocab.json": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910"
+  },
+  "progress": {
+    "step": 2,
+    "cursor": 16,
+    "phase": "sft",
+    "model": "Qwen/Qwen3-1.7B",
+    "world_size": 4,
+    "training_config": {
+      "model": "Qwen/Qwen3-1.7B",
+      "seed": 42,
+      "lora_rank": 16,
+      "lora_alpha": 32,
+      "learning_rate": 0.0002,
+      "rl_learning_rate": 5e-06,
+      "buckets": [
+        512,
+        1024,
+        2048
+      ],
+      "effective_batch": 32,
+      "checkpoint_interval": 50,
+      "max_transitions": 4,
+      "max_lookups": 2,
+      "max_generated_tokens": 512,
+      "group_size": 4,
+      "clip_epsilon": 0.2,
+      "kl_coefficient": 0.02,
+      "max_rl_steps": 300,
+      "project": "serious-unison-452122-i2",
+      "bucket": "keeper-file-storage",
+      "prefix": "knowing-when-to-switch",
+      "budget": {
+        "pilot": 5,
+        "sft": 20,
+        "rl": 15,
+        "evaluation": 5,
+        "storage": 5
+      },
+      "hard_ceiling": 50,
+      "prior_spend_upper_bound": 3.6753466848850245
+    }
+  },
+  "rank": 0,
+  "architecture": {
+    "rank": 16,
+    "alpha": 32
+  },
+  "mode_tokens": [
+    "<mode:jev>",
+    "<mode:direct>",
+    "<mode:cot>"
+  ]
+}

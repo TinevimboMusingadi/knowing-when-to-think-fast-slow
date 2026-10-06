@@ -61,11 +61,11 @@ class SwitchModel(nn.Module):
         self.config = {"rank": rank, "alpha": alpha}
 
     @classmethod
-    def load(cls, model_id, rank=16, alpha=32, dtype=torch.float32):
+    def load(cls, model_id, rank=16, alpha=32, dtype=torch.float32,local_files_only=False):
         from transformers import AutoTokenizer, AutoModelForCausalLM
-        tokenizer = AutoTokenizer.from_pretrained(model_id)
+        tokenizer = AutoTokenizer.from_pretrained(model_id,local_files_only=local_files_only)
         if tokenizer.pad_token_id is None: tokenizer.pad_token = tokenizer.eos_token
-        base = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=dtype, attn_implementation="eager")
+        base = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=dtype, attn_implementation="eager",local_files_only=local_files_only)
         return cls(base, tokenizer, rank, alpha)
 
     def prompt_ids(self, messages):

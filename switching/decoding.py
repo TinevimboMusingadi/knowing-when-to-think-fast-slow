@@ -5,7 +5,7 @@ from transformers import StaticCache
 
 @torch.no_grad()
 def static_generate(lm, prompts, max_new_tokens, pad_id, eos_id, jev_id=None,
-                    sample=False, capacity=2048, prefill_buckets=(512,1024,2048)):
+                    sample=False, capacity=2048, prefill_buckets=(512,1024,1536,2048),suppress_tokens=()):
     if not prompts or any(not p for p in prompts):
         raise ValueError("nonempty prompts required")
     width=next((b for b in prefill_buckets if b>=max(map(len,prompts))),None)
@@ -27,6 +27,7 @@ def static_generate(lm, prompts, max_new_tokens, pad_id, eos_id, jev_id=None,
     # Values vary on device; query and KV tensor shapes stay fixed after prefill.
     cursor=torch.tensor([width],device=device)
     for step in range(max_new_tokens):
+        if suppress_tokens:logits[:,list(suppress_tokens)]=-float("inf")
         token=torch.multinomial(logits.softmax(-1),1).squeeze(-1) if sample else logits.argmax(-1)
         token=torch.where(finished,torch.full_like(token,pad_id),token)
         generated.append(token)

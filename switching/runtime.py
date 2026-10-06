@@ -62,7 +62,7 @@ def rollout_group(model, episodes, max_tokens=512, max_transitions=4, max_lookup
         with torch.no_grad():
             if device.type=="xla":
                 from .decoding import static_generate
-                prefill=next(b for b in (512,1024,2048) if b>=width)
+                prefill=next(b for b in (512,1024,1536,2048) if b>=width)
                 length=min(length,2048-prefill)
                 if length<1:
                     for i in active:envs[i].error="context budget exhausted";envs[i].done=True

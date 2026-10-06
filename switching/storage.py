@@ -87,7 +87,7 @@ class Checkpoints:
         if optimizer is not None: optimizer.load_state_dict(state["optimizer"])
         if scheduler is not None: scheduler.load_state_dict(state["scheduler"])
         random.setstate(rng_tuple(state["python_rng"])); torch.set_rng_state(state["torch_rng"])
-        if "xla_rng" in state:
+        if "xla_rng" in state and next(model.parameters()).device.type=="xla":
             import torch_xla.core.xla_model as xm
             xm.set_rng_state(state["xla_rng"])
         return state["progress"]

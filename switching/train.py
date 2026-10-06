@@ -12,11 +12,25 @@ from .optim import DeviceAdamW
 from .runtime import action_logps,rollout_group,synchronize
 from .storage import Budget,Checkpoints,checksum
 
-def grpo_loss(new,old,reference,advantage,epsilon=.2,beta=.02):
-    ratio=(new-old).exp()
+def grpo_loss(new,old,reference,advantage,epsilon=.2,beta=.02,max_log_ratio=20.,validate=True):
+    """FP32 clipped GRPO with explicitly bounded exponential tails.
+
+    The tail bound is a numerical safeguard, not the PPO clipping threshold.
+    It changes the objective for extreme log-ratios; diagnostics must report it.
+    """
+    if not 0<epsilon<1 or beta<0 or not 0<max_log_ratio<=20:
+        raise ValueError("invalid GRPO stability parameters")
+    if new.ndim!=1 or not new.numel() or new.shape!=old.shape or new.shape!=reference.shape:
+        raise ValueError("action likelihood vectors must have identical nonempty shapes")
+    new=new.float();old=old.detach().float();reference=reference.detach().float()
+    advantage=torch.as_tensor(advantage,device=new.device,dtype=torch.float32).detach()
+    if advantage.numel()!=1:raise ValueError("one group-relative advantage required per episode")
+    if validate and not bool((torch.isfinite(new).all()&torch.isfinite(old).all()&torch.isfinite(reference).all()&torch.isfinite(advantage).all()).item()):
+        raise ValueError("non-finite GRPO input")
+    ratio=(new-old).clamp(-max_log_ratio,max_log_ratio).exp()
     objective=torch.minimum(ratio*advantage,ratio.clamp(1-epsilon,1+epsilon)*advantage)
-    delta=reference-new
-    kl=delta.exp()-delta-1
+    delta=(reference-new).clamp(-max_log_ratio,max_log_ratio)
+    kl=(torch.expm1(delta)-delta).clamp_min(0)
     return (-objective+beta*kl).mean()
 
 def advantages(rewards):
@@ -28,6 +42,12 @@ def ensure_all_gradients(model):
     for parameter in model.parameters():
         if parameter.requires_grad and parameter.grad is None:
             parameter.grad=torch.zeros_like(parameter)
+
+def gradient_norm(model):
+    """Inspect FP32 norms before mutating any gradient during clipping."""
+    gradients=[p.grad for p in model.parameters() if p.requires_grad and p.grad is not None]
+    if not gradients:raise ValueError("no gradients to inspect")
+    return torch.linalg.vector_norm(torch.stack([torch.linalg.vector_norm(g.float()) for g in gradients]))
 
 def memory_headroom(memory):
     """Support both legacy XRT and current PJRT memory counters; fail closed."""
@@ -93,10 +113,15 @@ def worker(index,args):
         synchronize(device)
     def optimizer_step():
         if xm:ensure_all_gradients(model)
-        norm=torch.nn.utils.clip_grad_norm_([p for p in model.parameters() if p.requires_grad],1.0)
+        norm=gradient_norm(model)
         norm_value=float(norm.item());finite=math.isfinite(norm_value)
         if xm:finite=xm.mesh_reduce("gradient-agreement",finite,all)
-        if not finite:raise RuntimeError("non-finite gradients; optimizer update refused")
+        if not finite:
+            metric(root/f"rl-numerics-rank{rank}.jsonl",{"event":"gradient-refused","step":progress["step"],"norm":str(norm_value),"timestamp":time.time()})
+            raise RuntimeError("non-finite gradients; optimizer update refused")
+        coefficient=(1./(norm+1e-6)).clamp(max=1.)
+        for parameter in model.parameters():
+            if parameter.requires_grad and parameter.grad is not None:parameter.grad.mul_(coefficient.to(parameter.grad.dtype))
         if xm: xm.optimizer_step(optimizer,barrier=True)
         else: optimizer.step()
         scheduler.step(); optimizer.zero_grad(set_to_none=True); progress["step"]+=1
@@ -192,7 +217,7 @@ def worker(index,args):
                 d_loss=torch.nn.functional.cross_entropy(logits,torch.tensor([d[2] for d in decision_batch],device=device))
                 update(d_loss*.5/group)
                 if (cursor+1)%accum==0 or cursor+1==total_batches:
-                    gradient_norm=optimizer_step(); synchronize(device)
+                    update_gradient_norm=optimizer_step(); synchronize(device)
                     progress["cursor"]=cursor+1
                     lm_value=float(lm_loss.item());decision_value=float(d_loss.item())
                     compilations=compile_count()-compile_before
@@ -205,7 +230,7 @@ def worker(index,args):
                     finite=math.isfinite(lm_value+decision_value)
                     if xm:finite=xm.mesh_reduce("loss-agreement",finite,all)
                     if not finite: raise RuntimeError("non-finite loss")
-                    if rank==0: metric(root/"metrics.jsonl",{"phase":"sft","step":progress["step"],"lm_loss":lm_value,"decision_loss":decision_value,"gradient_norm":gradient_norm,"seconds_last_microbatch":seconds,"seconds_optimizer_update":duration,"new_compilations":compilations,"useful_tokens_last_microbatch":useful,"timestamp":time.time()})
+                    if rank==0: metric(root/"metrics.jsonl",{"phase":"sft","step":progress["step"],"lm_loss":lm_value,"decision_loss":decision_value,"gradient_norm":update_gradient_norm,"seconds_last_microbatch":seconds,"seconds_optimizer_update":duration,"new_compilations":compilations,"useful_tokens_last_microbatch":useful,"timestamp":time.time()})
                     # Count cold graphs separately; compilation is paid but is not
                     # repeated on every future update. Reserve two cold-step costs
                     # and 25% throughput margin instead of hiding those costs.
@@ -227,6 +252,7 @@ def worker(index,args):
                 rl_started=time.perf_counter()
                 metric(root/f"rl-progress-rank{rank}.jsonl",{"event":"rollout-start","cursor":cursor,"behavior":episode["behavior"],"timestamp":time.time()})
                 samples=rollout_group(model,[episode]*config["group_size"],config["max_generated_tokens"],config["max_transitions"],config["max_lookups"])
+                metric(root/f"rl-episodes-rank{rank}.jsonl",{"cursor":cursor,"samples":samples,"timestamp":time.time()})
                 metric(root/f"rl-progress-rank{rank}.jsonl",{"event":"rollout-complete","cursor":cursor,"rewards":[s["reward"] for s in samples],"tokens":[s["tokens"] for s in samples],"errors":[s["error"] for s in samples],"seconds":time.perf_counter()-rl_started,"timestamp":time.time()})
                 adv=advantages([s["reward"] for s in samples]).to(device)
                 with torch.no_grad(): old=[action_logps(model,s["trace"]).detach() for s in samples]
@@ -238,12 +264,18 @@ def worker(index,args):
                 optimizer.zero_grad(set_to_none=True); total_loss=0
                 for j,sample in enumerate(samples):
                     new=action_logps(model,sample["trace"])
-                    loss=grpo_loss(new,old[j],ref[j],adv[j],config["clip_epsilon"],config["kl_coefficient"])/len(samples)
+                    bound=config.get("max_log_ratio",20.)
+                    loss=grpo_loss(new,old[j],ref[j],adv[j],config["clip_epsilon"],config["kl_coefficient"],bound,validate=False)/len(samples)
+                    finite=bool((torch.isfinite(new).all()&torch.isfinite(old[j]).all()&torch.isfinite(ref[j]).all()&torch.isfinite(loss)).item())
+                    safe=finite if not xm else xm.mesh_reduce("rl-input-agreement",finite,all)
+                    metric(root/f"rl-numerics-rank{rank}.jsonl",{"cursor":cursor,"sample":j,"finite":finite,"ratio_tail_actions":int(((new-old[j]).abs()>bound).sum().item()),"kl_tail_actions":int(((ref[j]-new).abs()>bound).sum().item()),"timestamp":time.time()})
+                    if not safe:raise RuntimeError("non-finite RL input/loss; backward refused on all replicas")
                     update(loss); total_loss+=float(loss.item())
-                gradient_norm=optimizer_step(); progress["cursor"]=cursor+1
-                if rank==0: metric(root/"metrics.jsonl",{"phase":"rl","step":progress["step"],"loss":total_loss,"gradient_norm":gradient_norm,"seconds_optimizer_update":time.perf_counter()-rl_started,"reward":sum(s["reward"] for s in samples)/len(samples),"tokens":sum(s["tokens"] for s in samples),"equal_reward_group":bool(torch.all(adv==0).item()),"timestamp":time.time()})
+                update_gradient_norm=optimizer_step(); progress["cursor"]=cursor+1
+                if rank==0: metric(root/"metrics.jsonl",{"phase":"rl","step":progress["step"],"loss":total_loss,"gradient_norm":update_gradient_norm,"seconds_optimizer_update":time.perf_counter()-rl_started,"reward":sum(s["reward"] for s in samples)/len(samples),"tokens":sum(s["tokens"] for s in samples),"equal_reward_group":bool(torch.all(adv==0).item()),"timestamp":time.time()})
+                save("latest")  # Budget-limited RL must preserve every completed update.
                 if progress["step"]%config["checkpoint_interval"]==0 or progress["step"]==1:
-                    value=validate(); save("latest")
+                    value=validate()
                     if value<best: best=value; save("best-rl")
                 if args.max_steps and progress["step"]>=args.max_steps: break
             save("latest")

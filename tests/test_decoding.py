@@ -4,6 +4,15 @@ from transformers import Qwen3Config,Qwen3ForCausalLM
 from switching.decoding import static_generate
 
 class DecodingTests(unittest.TestCase):
+    def test_native_readout_suppresses_added_tokens_and_matches_hf(self):
+        from transformers import SuppressTokensLogitsProcessor,LogitsProcessorList
+        torch.manual_seed(4)
+        config=Qwen3Config(vocab_size=64,hidden_size=32,intermediate_size=64,num_hidden_layers=1,num_attention_heads=4,num_key_value_heads=2,head_dim=8)
+        model=Qwen3ForCausalLM(config).eval();prompts=[[2,3,4]];forbidden=tuple(range(30,64))
+        actual=static_generate(model,prompts,5,0,29,capacity=16,prefill_buckets=(8,),suppress_tokens=forbidden)
+        expected=model.generate(input_ids=torch.tensor(prompts),max_new_tokens=5,do_sample=False,pad_token_id=0,eos_token_id=29,logits_processor=LogitsProcessorList([SuppressTokensLogitsProcessor(forbidden)]))[:,3:]
+        torch.testing.assert_close(actual,expected)
+        self.assertTrue(all(t<30 for t in actual.flatten().tolist()))
     def test_static_greedy_matches_dynamic_cache_for_padded_batch(self):
         torch.manual_seed(4)
         config=Qwen3Config(vocab_size=64,hidden_size=32,intermediate_size=64,num_hidden_layers=1,num_attention_heads=4,num_key_value_heads=2,head_dim=8)

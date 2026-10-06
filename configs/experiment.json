@@ -14,6 +14,7 @@
   "group_size": 4,
   "clip_epsilon": 0.2,
   "kl_coefficient": 0.02,
+  "max_log_ratio": 20.0,
   "max_rl_steps": 300,
   "project": "serious-unison-452122-i2",
   "bucket": "keeper-file-storage",

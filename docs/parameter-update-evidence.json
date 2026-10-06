@@ -1,0 +1,50 @@
+{
+  "progress": {
+    "step": 2,
+    "cursor": 16,
+    "phase": "sft",
+    "model": "Qwen/Qwen3-1.7B",
+    "world_size": 4,
+    "training_config": {
+      "model": "Qwen/Qwen3-1.7B",
+      "seed": 42,
+      "lora_rank": 16,
+      "lora_alpha": 32,
+      "learning_rate": 0.0002,
+      "rl_learning_rate": 5e-06,
+      "buckets": [
+        512,
+        1024,
+        2048
+      ],
+      "effective_batch": 32,
+      "checkpoint_interval": 50,
+      "max_transitions": 4,
+      "max_lookups": 2,
+      "max_generated_tokens": 512,
+      "group_size": 4,
+      "clip_epsilon": 0.2,
+      "kl_coefficient": 0.02,
+      "max_rl_steps": 300,
+      "project": "serious-unison-452122-i2",
+      "bucket": "keeper-file-storage",
+      "prefix": "knowing-when-to-switch",
+      "budget": {
+        "pilot": 5,
+        "sft": 20,
+        "rl": 15,
+        "evaluation": 5,
+        "storage": 5
+      },
+      "hard_ceiling": 50,
+      "prior_spend_upper_bound": 3.6753466848850245
+    }
+  },
+  "checkpoint_sha256": "ee2fa7254bb62124a3c371db8bcc51f389bb082d6844c000287fbb0ba2dba8b2",
+  "finite_parameters": true,
+  "nonzero_lora_B_matrices": 112,
+  "lora_B_matrices": 112,
+  "mode_row_difference": 0.000152587890625,
+  "head_has_nonzero_optimizer_moment": true,
+  "parameter_updates_verified": true
+}
