@@ -15,7 +15,7 @@ class Budget:
         self.path=Path(path); self.rate=float(rate); self.stage=stage; self.limits=limits
         if self.rate <= 0: raise ValueError("whole-slice hourly rate must be verified and positive")
         self.started=time.time() if start is None else start
-        self.previous=json.loads(self.path.read_text()) if self.path.exists() else {"stages":{"prior_attempts":prior_spend},"limit":50}
+        self.previous=json.loads(self.path.read_text()) if self.path.exists() else {"stages":{"pilot":prior_spend},"limit":50}
         self.base_stage=self.previous["stages"].get(stage,0)
 
     def remaining(self):

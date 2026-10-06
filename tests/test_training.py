@@ -6,7 +6,8 @@ from transformers import Qwen3Config,Qwen3ForCausalLM
 from switching.model import SwitchModel,DecisionHead
 from switching.batching import pack
 from switching.storage import Checkpoints
-from switching.train import grpo_loss,advantages,memory_headroom
+from switching.train import grpo_loss,advantages,memory_headroom,is_memory_exhaustion
+from switching.optim import DeviceAdamW
 
 class TinyTokenizer:
     pad_token_id=0
@@ -19,10 +20,25 @@ def tiny_model():
     return SwitchModel(Qwen3ForCausalLM(config),TinyTokenizer(),rank=2,alpha=4)
 
 class TrainingTests(unittest.TestCase):
+    def test_device_adamw_matches_reference_and_restores(self):
+        a=torch.nn.Parameter(torch.tensor([1.0,-2.0]));b=torch.nn.Parameter(a.detach().clone())
+        custom=DeviceAdamW([a],lr=.01);reference=torch.optim.AdamW([b],lr=.01)
+        for index in range(5):
+            a.grad=torch.tensor([.2+index*.1,-.4]);b.grad=a.grad.clone()
+            custom.step();reference.step()
+            torch.testing.assert_close(a,b,atol=1e-6,rtol=1e-6)
+        restored=DeviceAdamW([a],lr=.01);restored.load_state_dict(custom.state_dict())
+        self.assertEqual(restored.state[a]["step"].item(),5)
+        mixed=torch.nn.Parameter(a.detach().to(torch.bfloat16))
+        mixed_optimizer=DeviceAdamW([mixed]);mixed_optimizer.load_state_dict(custom.state_dict())
+        self.assertEqual(mixed_optimizer.state[mixed]["exp_avg"].dtype,torch.float32)
+
     def test_pjrt_memory_counters(self):
         self.assertAlmostEqual(memory_headroom({"bytes_used":40,"bytes_limit":100,"peak_bytes_used":50}),.5)
         self.assertAlmostEqual(memory_headroom({"kb_free":80,"kb_total":100}),.8)
         with self.assertRaises(ValueError):memory_headroom({})
+        self.assertTrue(is_memory_exhaustion(ValueError("XLA:TPU compile permanent error. Ran out of memory in memory space hbm.")))
+        self.assertFalse(is_memory_exhaustion(ValueError("invalid attention mask")))
 
     def test_head_permutation(self):
         torch.manual_seed(1);head=DecisionHead(32).eval();x=torch.randn(2,4,32);order=[2,0,3,1]

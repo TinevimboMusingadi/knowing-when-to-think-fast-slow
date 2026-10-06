@@ -8,6 +8,7 @@ from pathlib import Path
 import torch
 from .batching import pack,supervised_items
 from .model import SwitchModel
+from .optim import DeviceAdamW
 from .runtime import action_logps,rollout_group,synchronize
 from .storage import Budget,Checkpoints
 
@@ -32,6 +33,10 @@ def memory_headroom(memory):
         return int(memory["kb_free"])/int(memory["kb_total"])
     raise ValueError("unrecognized device memory counters")
 
+def is_memory_exhaustion(error):
+    text=str(error).lower()
+    return any(term in text for term in ("out of memory","resource_exhausted","memory space hbm"))
+
 def load_rows(path):
     with open(path,encoding="utf-8") as stream: return [json.loads(line) for line in stream if line.strip()]
 
@@ -53,7 +58,7 @@ def worker(index,args):
     model=SwitchModel.load(config["model"],config["lora_rank"],config["lora_alpha"],torch.bfloat16 if xm else torch.float32).to(device)
     if xm:
         model.head.to(torch.bfloat16)
-    optimizer=torch.optim.AdamW([p for p in model.parameters() if p.requires_grad],lr=config["rl_learning_rate"] if args.phase=="rl" else config["learning_rate"])
+    optimizer=(DeviceAdamW if xm else torch.optim.AdamW)([p for p in model.parameters() if p.requires_grad],lr=config["rl_learning_rate"] if args.phase=="rl" else config["learning_rate"])
     scheduler=torch.optim.lr_scheduler.LambdaLR(optimizer,lambda step:min(1,(step+1)/10))
     root=Path(args.output); root.mkdir(parents=True,exist_ok=True)
     checkpoints=Checkpoints(root/"checkpoints",args.gcs)
@@ -109,12 +114,18 @@ def worker(index,args):
                 t=time.perf_counter(); batch,_,useful=pack(items,bucket,micro,model.tokenizer.pad_token_id,device)
                 try:
                     loss=model.lm(**batch).loss; update(loss); optimizer_step(); synchronize(device)
-                except RuntimeError as exc:
-                    if "out of memory" in str(exc).lower() or "resource_exhausted" in str(exc).lower():
+                except (RuntimeError,ValueError) as exc:
+                    if is_memory_exhaustion(exc):
                         optimizer.zero_grad(set_to_none=True);break
                     raise
                 compile_seconds=time.perf_counter()-t
-                t=time.perf_counter(); loss=model.lm(**batch).loss; update(loss); optimizer_step(); synchronize(device)
+                t=time.perf_counter()
+                try:
+                    loss=model.lm(**batch).loss; update(loss); optimizer_step(); synchronize(device)
+                except (RuntimeError,ValueError) as exc:
+                    if is_memory_exhaustion(exc):
+                        optimizer.zero_grad(set_to_none=True);break
+                    raise
                 seconds=time.perf_counter()-t
                 memory=xm.get_memory_info(device) if xm else {}
                 headroom=memory_headroom(memory) if xm else 1.0
