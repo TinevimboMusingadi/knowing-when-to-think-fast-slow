@@ -110,12 +110,21 @@ class TunixSwitchModel(nnx.Module):
         positions=jnp.broadcast_to(jnp.arange(width)[None,:],ids.shape)
         valid=jnp.arange(width)[None,:]<lengths[:,None]
         mask=valid[:,None,:] & (jnp.arange(width)[:,None]>=jnp.arange(width)[None,:])[None,:,:]
-        representations=[]
-        for offset in range(0,len(ids),self.candidate_microbatch):
-            end=min(len(ids),offset+self.candidate_microbatch)
-            hidden,_=self.hidden(ids[offset:end],positions[offset:end],mask[offset:end])
-            representations.append(hidden[jnp.arange(end-offset),jnp.maximum(lengths[offset:end]-1,0)])
-        reps=jnp.concatenate(representations).reshape(batch,count,-1)
+        chunk=min(self.candidate_microbatch,len(ids))
+        if len(ids)%chunk:raise ValueError('candidate count must divide its encoding microbatch')
+        # A scan compiles one backbone body. Python unrolling duplicated all 28
+        # layers per candidate and created a large host compilation workload.
+        # Parameters are explicit invariant carry, not embedded weight literals.
+        graph,state=nnx.split(self.base)
+        def encode(state,inputs):
+            tokens,pos,attention,size=inputs
+            base=nnx.merge(graph,state)
+            hidden,_=base(input_tokens=tokens,positions=pos,cache=None,attention_mask=attention,skip_lm_head=True)
+            return state,hidden[jnp.arange(chunk),jnp.maximum(size-1,0)]
+        inputs=(ids.reshape(-1,chunk,width),positions.reshape(-1,chunk,width),
+                mask.reshape(-1,chunk,width,width),lengths.reshape(-1,chunk))
+        _,representations=jax.lax.scan(jax.checkpoint(encode),state,inputs)
+        reps=representations.reshape(batch,count,-1)
         weights={n:p.value for n,p in self.head.items()}
         return decision_head(weights,reps,candidate_valid)
 

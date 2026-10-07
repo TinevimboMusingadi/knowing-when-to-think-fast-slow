@@ -3,6 +3,38 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import optax
+from functools import lru_cache
+
+
+@jax.jit
+def add_gradients(left,right):return jax.tree.map(jnp.add,left,right)
+
+
+@jax.jit
+def all_finite(tree):
+    leaves=[x for x in jax.tree.leaves(tree) if hasattr(x,'dtype')]
+    return jnp.stack([jnp.isfinite(x).all() for x in leaves]).all() if leaves else jnp.array(True)
+
+
+@jax.jit
+def all_nonnegative(tree):return jnp.stack([(x>=0).all() for x in jax.tree.leaves(tree)]).all()
+
+
+@jax.jit
+def gradient_norm(tree):return optax.global_norm(tree)
+
+
+@jax.jit
+def clip_gradients(tree,norm):return jax.tree.map(lambda x:x*jnp.minimum(1.,1./(norm+1e-6)),tree)
+
+
+@lru_cache(maxsize=8)
+def update_kernel(tx):
+    @jax.jit
+    def apply(params,state,gradients):
+        updates,new_state=tx.update(gradients,state,params)
+        return optax.apply_updates(params,updates),new_state
+    return apply
 
 
 def cast_fp32(tree):return jax.tree.map(lambda x:x.astype(jnp.float32) if hasattr(x,"dtype") and jnp.issubdtype(x.dtype,jnp.floating) else x,tree)
@@ -23,8 +55,7 @@ def failures(tree,require_nonnegative=False):
 
 
 def assert_finite(tree,stage):
-    leaves=[x for x in jax.tree.leaves(tree) if hasattr(x,"dtype")]
-    valid=jnp.stack([jnp.isfinite(x).all() for x in leaves]).all() if leaves else jnp.array(True)
+    valid=all_finite(tree)
     if not bool(jax.device_get(valid)):raise NumericalFailure(stage,failures(tree))
 
 
@@ -48,14 +79,14 @@ def checked_update(params,state,gradients,tx,reduce=None):
     gradients=cast_fp32(gradients);assert_finite(gradients,"local-gradients")
     reduced=gradients if reduce is None else reduce(gradients)
     assert_finite(reduced,"reduced-gradients")
-    norm=optax.global_norm(reduced)
+    norm=gradient_norm(reduced)
     if not np.isfinite(float(norm)):raise NumericalFailure("gradient-norm",[{"norm":str(float(norm))}])
-    clipped=jax.tree.map(lambda x:x*jnp.minimum(1.,1./(norm+1e-6)),reduced)
-    updates,new_state=tx.update(clipped,state,params);new_params=optax.apply_updates(params,updates)
+    clipped=clip_gradients(reduced,norm)
+    new_params,new_state=update_kernel(tx)(params,state,clipped)
     assert_finite(new_params,"parameters");assert_finite(new_state,"optimizer-state")
     for item in jax.tree.leaves(new_state,is_leaf=lambda x:hasattr(x,"nu")):
         if hasattr(item,"nu"):
-            valid=jnp.stack([(x>=0).all() for x in jax.tree.leaves(item.nu)]).all()
+            valid=all_nonnegative(item.nu)
             if not bool(jax.device_get(valid)):raise NumericalFailure("second-moments",failures(item.nu,require_nonnegative=True))
     return new_params,new_state,{"gradient_norm":float(norm),"accepted":True}
 

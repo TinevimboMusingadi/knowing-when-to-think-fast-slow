@@ -10,7 +10,7 @@ import jax
 import jax.numpy as jnp
 from flax import nnx
 from .tunix_load import load_fixture
-from .tunix_model import Trainable
+from .tunix_model import Trainable,decision_head
 from .tunix_optim import optimizer,checked_update,grpo_loss,advantages,assert_finite,NumericalFailure
 from .checkpoint_v2 import CheckpointsV2
 
@@ -57,6 +57,25 @@ def validate(folder,output,development=False):
             changed=model.hidden(cids.at[0,2].set(11),jnp.broadcast_to(jnp.arange(cids.shape[1]),cids.shape),causal)[0]
             return agree("isolation",h[1:],changed[1:])
         checked("candidate-backbone-isolation",isolated)
+        def candidate_gradients():
+            causal=jnp.tril(jnp.ones((len(cids),cids.shape[1],cids.shape[1]),dtype=bool))&(jnp.arange(cids.shape[1])[None,None,:]<lengths[:,None,None])
+            pos=jnp.broadcast_to(jnp.arange(cids.shape[1]),cids.shape)
+            def reference_loss(params):
+                module=nnx.merge(graph,params,frozen)
+                hidden,_=module.hidden(cids,pos,causal)
+                reps=hidden[jnp.arange(len(cids)),jnp.maximum(lengths-1,0)][None,:]
+                scores=decision_head({n:p.value for n,p in module.head.items()},reps,valid)
+                return -jax.nn.log_softmax(scores[0,:3])[0]
+            target=jax.grad(reference_loss)(actor);maximum=0.
+            for chunk in (1,2):
+                def scanned_loss(params):
+                    module=nnx.merge(graph,params,frozen);module.candidate_microbatch=chunk
+                    return -jax.nn.log_softmax(module.candidate_logits(cids,lengths,valid)[0,:3])[0]
+                actual=jax.grad(scanned_loss)(actor)
+                for a,b in zip(jax.tree.leaves(actual),jax.tree.leaves(target)):
+                    maximum=max(maximum,agree('candidate-gradient',a,b)['max_absolute_difference'])
+            return {'encoding_microbatches':[1,2],'maximum_absolute_gradient_difference':maximum,'reference':'independent batched backbone branches'}
+        checked('candidate-scan-gradient-parity',candidate_gradients)
         original=np.load(folder/"trainables.npz",allow_pickle=False)
         def roundtrip():
             restored={}

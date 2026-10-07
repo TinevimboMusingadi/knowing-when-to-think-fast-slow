@@ -9,7 +9,7 @@ from pathlib import Path
 import numpy as np
 import jax
 import jax.numpy as jnp
-from .tunix_optim import optimizer,checked_update,advantages,grpo_loss,assert_finite,NumericalFailure
+from .tunix_optim import optimizer,checked_update,advantages,grpo_loss,assert_finite,NumericalFailure,add_gradients
 from .episode_v2 import EpisodeEnvV2
 from .protocol import MODES
 from .tunix_distributed import Replicas
@@ -77,7 +77,7 @@ class MixedLearner:
                 def loss(params):
                     return -runtime.packed_logps(params,packed).sum()*.5*world/language_count
                 value,grad=jax.value_and_grad(loss)(actor);assert_finite(value,"sft-loss")
-                total+=float(value);gradients=jax.tree.map(jnp.add,gradients,grad)
+                total+=float(value);gradients=add_gradients(gradients,grad)
             grouped={}
             for _,decision in batch:
                 if decision is not None:
@@ -88,7 +88,7 @@ class MixedLearner:
                     selected=decisions[offset:offset+microbatch]
                     loss=lambda params:-runtime.decision_events_logps(params,selected).sum()*.5*world/max(1,decision_count)
                     value,grad=jax.value_and_grad(loss)(actor);assert_finite(value,"sft-decision-loss")
-                    total+=float(value);gradients=jax.tree.map(jnp.add,gradients,grad)
+                    total+=float(value);gradients=add_gradients(gradients,grad)
             return gradients,total
         self.key,draw=jax.random.split(self.key)
         results=self.replicas.map(work,self.actor,self.reference,[examples[i::world] for i in range(world)],jax.random.split(draw,world))
@@ -137,7 +137,7 @@ class MixedLearner:
                 new=jnp.concatenate([runtime.event_logps(params,event) for event in trace.events])
                 return grpo_loss(new,old,reference,advantage,self.config["clip_epsilon"],self.config["kl_coefficient"])*weight
             value,grad=jax.value_and_grad(loss)(actor);assert_finite(value,"rl-loss")
-            gradients=jax.tree.map(jnp.add,gradients,grad);total+=float(value)
+            gradients=add_gradients(gradients,grad);total+=float(value)
         return gradients,total,tail_max
 
     def close(self):self.replicas.close()
