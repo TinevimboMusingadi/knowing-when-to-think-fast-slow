@@ -236,4 +236,16 @@ class TrainingTests(unittest.TestCase):
             with self.assertRaises(ValueError):manager.load(path,model)
             manager.close()
 
+class WorkerFailureTests(unittest.TestCase):
+    def test_worker_exception_is_saved_before_parent_wait(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        from switching.train import worker
+        import tempfile
+        with tempfile.TemporaryDirectory() as folder:
+            with patch("switching.train._worker_impl",side_effect=RuntimeError("replica failure")):
+                with self.assertRaisesRegex(RuntimeError,"replica failure"):
+                    worker(2,SimpleNamespace(output=folder))
+            self.assertIn("replica failure",(Path(folder)/"worker-error-2.txt").read_text())
+
 if __name__=="__main__":unittest.main()

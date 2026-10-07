@@ -5,6 +5,7 @@ import json
 import math
 import random
 import time
+import traceback
 from pathlib import Path
 import torch
 from .batching import pack,supervised_items
@@ -307,6 +308,19 @@ def worker(index,args):
         save("final" if completed else "interrupted")
         if rank==0: budget.finish()
         checkpoints.close()
+
+_worker_impl=worker
+
+def worker(index,args):
+    """Persist worker failures before ordered XLA futures can hide them."""
+    try:
+        return _worker_impl(index,args)
+    except BaseException:
+        root=Path(args.output);root.mkdir(parents=True,exist_ok=True)
+        detail=traceback.format_exc()
+        (root/f"worker-error-{index}.txt").write_text(detail)
+        print(detail,flush=True)
+        raise
 
 def main():
     p=argparse.ArgumentParser(); p.add_argument("--config",default="configs/experiment.json"); p.add_argument("--phase",choices=["pilot","sft","rl"],required=True)
