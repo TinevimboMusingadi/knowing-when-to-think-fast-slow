@@ -1,0 +1,51 @@
+{
+  "episode_id": "test-lookup-36",
+  "policy": "SFT switching",
+  "source_record": "runs/20261006-122830/final/comparisons/sft_switch.jsonl",
+  "task": "Look up an undisclosed numeric record value and select its matching candidate.",
+  "actions": [
+    "<mode:direct>{\"action\": \"lookup\", \"query\": \"record-test-36\"}",
+    "<mode:jev>"
+  ],
+  "observed_lookup_value": 1912,
+  "candidates": [
+    {
+      "id": "c0",
+      "value": 1893,
+      "text": "1893"
+    },
+    {
+      "id": "c1",
+      "value": 1912,
+      "text": "1912"
+    },
+    {
+      "id": "c2",
+      "value": 1906,
+      "text": "1906"
+    },
+    {
+      "id": "c3",
+      "value": 1902,
+      "text": "1902"
+    }
+  ],
+  "selected_candidate_id": "c1",
+  "answer": 1912,
+  "correct": true,
+  "grounded": true,
+  "generated_tokens": 19,
+  "recorded_forward_counter": 20,
+  "candidate_probabilities": [
+    2.7532994863577187e-05,
+    0.9998728036880493,
+    3.7633009924320504e-05,
+    6.204647797858343e-05
+  ],
+  "limitations": [
+    "Controlled lookup fixture; no live web browsing.",
+    "Saved rollout replay, not a newly executed demo.",
+    "A single example is not a benchmark or evidence of an RL improvement.",
+    "No learned JEV-to-CoT or CoT-to-JEV result is established by this example."
+  ]
+}

@@ -1,160 +1,55 @@
 # Knowing When to Switch
 
-Choosing a known value from a few options should require less work than solving
-a multi-step problem. When a necessary fact is missing, neither a quick guess
-nor a long explanation solves the problem. The useful next step is to ask for
-that fact.
+Choosing a known value from a few options should require less work than solving a multi-step problem. If a necessary fact is missing, a quick guess and a long explanation can both fail. Sometimes the useful next step is to ask for that fact.
 
-Knowing When to Switch asks whether one small model can learn those choices:
-when to make a typed decision, when to answer directly, when to reason, and when
-to acquire more context before deciding. The last item is an action within a
-mode, rather than a fourth mode.
+This project asks whether one small model can learn those choices: make a typed decision, answer directly, reason, or gather context before deciding. There are three modes—JEV, direct and ordinary chain-of-thought. Clarification and lookup are actions within them.
 
-The prototype extends [Qwen3-1.7B](https://huggingface.co/Qwen/Qwen3-1.7B) with a typed decision head. Three learned tokens
-select direct answering, ordinary chain-of-thought, or candidate scoring. The
-runtime executes the selected path. A mode token is a control signal, not proof
-that the model has learned good judgment.
+The prototype uses the complete [Qwen3-1.7B](https://huggingface.co/Qwen/Qwen3-1.7B) backbone and its language head. Shared LoRA adapters serve all three paths. A small attention head scores candidates, and three learned token rows select the mode. Emitting `<mode:jev>` stops language decoding and invokes that head. A mode token is a control signal, not evidence of good judgment.
 
-Each candidate is encoded with the state in an isolated branch. A shared
-attention head compares the branch representations without candidate-position
-embeddings. The design targets permutation-equivariant probabilities: moving a
-candidate should move its probability with it rather than change its meaning.
-Routing and prefill costs still count toward inference latency. Scoring four
-candidates means encoding four branches. Calling that path "fast" is a hypothesis
-to test with synchronized timing, rather than a conclusion from its short output.
+Each candidate is encoded with observed context in an isolated branch. Positions reset, and candidates compare only inside a head without candidate-position embeddings. Moving a candidate should move its probability with it. Four candidates still entail four branch encodings: short output alone does not prove lower latency or compute.
 
-For a typed decision, emitting `<mode:jev>` stops language decoding immediately
-and invokes the scoring head. `<mode:direct>` selects ordinary answering or a
-context request. `<mode:cot>` selects ordinary reasoning. The same backbone and
-LoRA adapters serve all three paths; the model keeps its original language head.
-Only adapters, the small decision head, and the new token rows are trainable.
+The decision design is informed by [the JEV-style Qwen implementation](https://github.com/avbiswas/bev-train). Adaptive thinking already has substantial prior work, including [Think Only When You Need](https://arxiv.org/abs/2505.14631) and [AdaptThink](https://arxiv.org/abs/2505.13417). Qwen3 itself supports thinking and non-thinking operation. The question here is narrower: can a shared generative and typed-decision model learn useful transitions within a task?
 
-A typed assessment can continue into reasoning, and reasoning can finish in a
-typed decision. Another intended trajectory asks for an unknown record value,
-receives it, and selects the matching candidate. Controller tests exercise these
-trajectories with supplied actions. Learned demonstrations must come from saved
-model rollouts; passing the controller tests does not establish learned routing.
+## What actually worked
 
-Training starts with supervised examples, then group-relative reinforcement
-learning. Rewards depend on verified answers, necessary information acquisition,
-and compute costs. A plausible reasoning trace is not itself evidence of a
-correct answer. Missing information requires asking or using a controlled lookup.
+The original supervised run completed 438 optimizer updates on four TPU devices. Its best retained checkpoint was selected at step 150 by validation loss. Training completion and decreasing loss do not establish held-out accuracy.
 
-The dataset contains 8,000 training episodes and two holdouts of 600 episodes
-each. Four thousand existing math prompts were reused after checking their answers
-against the original GSM8K training source. Existing teacher completions were
-not imported. Problem duplicates and overlapping source families are checked
-before upload. The typed tasks include choices, yes/no/unknown, and bounded
-rubric scores. Separate examples cover reasoning, transitions, clarification,
-and controlled lookup.
+One saved rollout provides a concrete example. The task withholds a numeric record value. The SFT model requests a controlled lookup in direct mode, receives **1,912**, emits JEV, and selects **1,912** from four candidates. It uses 19 generated tokens. An always-direct baseline also answers that fixture correctly, using 35 tokens. Candidate encoding and the decision head still cost computation, so this example cannot establish a latency advantage.
 
-The public tasks are arithmetic and context fixtures, with source-separated
-holdouts. They cannot establish broad-domain reasoning or reliable open-web
-research. A benchmark may also resemble the base model's pretraining material:
-split isolation in this experiment does not prove absence of pretraining exposure.
+The [saved demonstration](demo-record.json) contains modes, actions, evidence, candidate probabilities and the answer. It is a replay of a recorded rollout, not newly executed inference or live web research. Learned JEV → CoT and CoT → JEV demonstrations remain unestablished. Controller tests with supplied actions do not count as learned routing.
 
-The TPU run uses a four-chip preemptible v5e slice and BF16. Its spending ceiling
-is $50, including storage and evaluation. The guard uses the four-chip on-demand
-rate as a conservative bound, adds a margin, and carries failed attempts into
-the next run. [Google publishes TPU prices per chip-hour](https://cloud.google.com/tpu/pricing),
-so using a one-chip price for the whole slice would undercount the experiment.
+## Where reinforcement learning failed
 
-Early runs found deployment and recovery bugs before they could become claims
-about learning. A larger pilot batch exceeded TPU memory. A memory-counter
-compatibility bug incorrectly rejected the smaller batch. An early SFT cost
-projection spread startup compilation across every future step. XLA checkpoint
-serialization also converted a random-state tuple to a list. Each failure left
-logs or recoverable checkpoints, and the corresponding fixes received tests.
+A verified RL checkpoint shows one finite update that changed 224 LoRA tensors and the mode embeddings. Its frozen reference matched SFT. The decision head did not change in that warmup update. This establishes a real policy update, not improved reasoning, decision accuracy or routing.
 
-An early saved Qwen SFT checkpoint, from before the final dataset audit, contains two completed optimizer updates across
-four replicas. Its checksums were verified after downloading it from GCS. All
-112 LoRA B matrices, initialized at zero, contain nonzero values. The three mode
-rows have diverged from their identical initialization, the head has nonzero
-optimizer moments, and the saved trainable parameters are finite. The
-[public parameter evidence](parameter-update-evidence.json) records these checks.
-This establishes an operational training path, not improved task accuracy.
+Subsequent attempts failed. One continuation's saved step-2 mode rows contained 18 NaNs; an integrity check showed the affected storage had downloaded correctly. That checkpoint is excluded from recovery.
 
-## What the run established
+The final PyTorch/XLA pilot restored finite state on all four replicas. Its 16 rollouts executed without environment errors, and some reward groups had variation. Likelihoods and losses passed finite checks; every replica completed backward. The next failure was the post-update parameter/optimizer-state guard. No new update was accepted.
 
-This article remains a draft because the full experiment is incomplete. Supervised
-training completed 438 optimizer updates across four TPU replicas on the corrected
-dataset. The recorded training losses and gradient norms stayed finite. This
-does not establish held-out accuracy: those losses concern supervised training,
-and the best checkpoint was selected by validation loss. An initial autoregressive
-evaluation produced no first rollout result after several minutes. The pipeline
-was changed to use fixed-size KV caches for TPU rollouts, with CPU equivalence
-tests, and real GRPO was launched from the saved best SFT checkpoint. A mixed-head
-distributed gradient synchronization fault interrupted progress; giving every
-replica the same gradient list allowed the resumed run to reach step 3. The next
-update was rejected for non-finite gradients. A recoverable step-3 checkpoint
-was saved, and the experiment's TPU was deleted after the comparison stage.
+The logs do not separately identify reduced gradients and the optimizer's resulting tensors. They cannot establish an AdamW bug, a hardware fault or the precise numerical mechanism. The honest diagnosis is an unresolved failure between distributed reduction and updated state. The guard prevented publication of another invalid checkpoint.
 
-The saved comparison records contain two lookup and two clarification episodes.
-SFT switching, the selected step-1 RL checkpoint, and always-direct each answered
-those four fixtures correctly with grounded context. These records neither
-establish an RL improvement nor compare all six task behaviors. Native Qwen has
-no applicable tasks in that four-episode sample, and produced no evaluated
-records before its next batch timed out.
+Only four completed context-acquisition examples survived the original comparison. SFT switching, the evaluated finite RL policy and always-direct answered those fixtures correctly. Four examples do not establish an RL gain or represent all six behaviors.
 
-One actual saved lookup example asks for an undisclosed record value. The model
-selects direct mode to request `record-test-36`, receives its value, and emits
-JEV to score the candidates. It returns 1,912 using 19 generated tokens. This is
-a narrow learned context-acquisition example; it does not demonstrate a general
-ability to choose between fast and slow reasoning. JEV-to-CoT and CoT-to-JEV
-transitions still have controller-test coverage rather than a completed learned
-benchmark.
+## Repairing the experiment
 
-Offline repairs reproduced overflow in the old exponential KL calculation. The
-new loss computes in FP32, uses `expm1`, and bounds exponential tails at a
-log-ratio magnitude of 20. That tail bound changes the extreme-tail objective,
-so its activation counts are logged. A random tiny Qwen architecture completed
-four finite fixed-action optimizer updates, changing adapters, decision-head
-weights, and mode rows while preserving base weights. This regression probe
-does not prove that the original 1.7B TPU failure is resolved: the exact failing
-rollout was not saved. New runs now retain sampled traces and numerical diagnostics.
+The recovery uses a pinned Tunix/JAX Qwen implementation with a custom mixed-action learner. A JEV decision contributes its categorical log probability; it is never represented as an invented language token. Prompts, tool responses and padding receive no policy loss. Actor and reference states share a frozen backbone and remain separate on device.
 
-A subsequent, tightly bounded TPU restart loaded the best SFT checkpoint with a
-fresh optimizer and completed one finite GRPO update in about 222 seconds.
-Checksum-verified checkpoint comparisons found changes in 224 LoRA tensors and
-the mode-token embedding; the frozen reference matched SFT exactly. The decision
-head was unchanged after this first warmup update. Four of eight recorded rollout
-groups had varied rewards, providing a relative-reward signal; one sampled action
-failed JSON parsing and received a penalty. The second update did not complete
-before the independent stage timeout. No recorded numerical check failed, but
-one successful update cannot establish multi-step stability. The bottleneck in
-the unfinished update remains unverified. The TPU was deleted, and the
-[sanitized recovery report](rl-restart-report.json) records the evidence.
+The update sequence exposes local gradients, FP32 averaged gradients, global norm clipping, AdamW, updated parameters and optimizer moments. Invalid state terminates the attempt with tensor diagnostics. There is no NaN-to-zero repair or repeated retry of a failed update.
 
-This restart's conservative compute bound was $1.76, bringing the cumulative
-compute bound to $44.95 while retaining $5 for storage. These figures use the
-on-demand rate plus a margin and include creation through audited deletion;
-they are not billing totals. Further paid training requires reconciling actual
-spending or revising the experiment budget.
+The task also needed repair. Visible prompts must not prescribe asking or looking up the answer. Clarification must request the advertised missing field; an arbitrary question must not automatically reveal it. Tool availability depends on public information. JEV can choose answer, defer, ask or lookup. Deferring leaves the next mode for the model to choose.
 
-A reproducible 60-episode holdout contains ten episodes from each behavior,
-with a separate 30-episode validation subset for choosing the confidence
-threshold. It is prepared, not evaluated. The full 1.7B weights are not cached
-locally. The offline repair itself required no paid resource; the subsequent
-bounded TPU restart is reported above. A complete
-comparison and any accuracy/compute improvement remain unestablished.
-The final report must distinguish warmed
-inference from compilation, include failures, and report billing separately from
-conservative spending estimates. There is no accuracy or efficiency gain to claim
-from training updates alone.
+The recovery dataset has 1,536 corrective SFT episodes, 120 validation episodes and 600 sealed test episodes. Source/context variants stay together, and template families differ across splits. The provenance audit reused 252 verified original public GSM8K training examples and imported no private teacher completions. Paired tasks vary whether useful evidence is present or missing; unnecessary tool requests provide a control. These remain arithmetic and context fixtures, not proof of broad reasoning or open-web competence. Split isolation does not prove absence of pretraining exposure.
 
-## Prior work
+At this draft's current checkpoint, 99 reference/control tests pass. Small-model development checks also pass FP32 parity, candidate isolation/order, optimizer reference updates, cache likelihoods, packed masking, four-CPU gradient averaging, BF16 with rematerialization and a distributed supervised diagnostic update. The complete locked Linux environment and full 1.7B parity checks remain pending. The recovery has not rented a TPU or begun new SFT/RL.
 
-Qwen3 already supports thinking and non-thinking operation.
-[AdaptThink](https://arxiv.org/abs/2505.13417) learns adaptive thinking choices
-with reinforcement learning. [PATS](https://arxiv.org/abs/2505.19250) studies
-switching during the reasoning process using process rewards and search.
-[BEV's Qwen decision architecture](https://github.com/avbiswas/bev-train) provides
-another relevant starting point for typed, choice-order-invariant decisions.
-The narrower question here concerns learned transitions
-between typed candidate scoring, ordinary generation, and gathering missing
-context. The experiment must earn its claims through comparisons.
+## Measuring the question honestly
 
-The [code and reproducible workflow](https://github.com/TinevimboMusingadi/knowing-when-to-think-fast-slow)
-are public. The useful research outcome will be a measured answer to whether
-these execution paths share a better accuracy/compute tradeoff on the controlled
-tasks, including the cases where switching makes the result worse.
+The cumulative ceiling is now **$120**, including prior attempts. The conservative historical estimate of **$62.11** leaves **$57.89**, with evaluation funds protected. These are bounds, not reconciled bills. [TPU pricing](https://cloud.google.com/tpu/pricing) requires accounting for the whole slice, including setup, compilation, uploads and verified deletion.
+
+The planned comparison includes native Qwen thinking/non-thinking, corrected SFT and RL switching, fixed modes, and validation-selected confidence switching. Trained policies receive the same tools, observations and context capacity. Always-JEV's inability to generate reasoning is an explicit capability restriction.
+
+Test settings and IDs are frozen before opening outcomes. Reports will include grounded accuracy by behavior, failures, calibration, generated and candidate tokens, synchronized warmed latency, cold-call overhead and costs. Accuracy intervals and paired source-group comparisons accompany measurements. One training seed is exploratory.
+
+A negative result is useful if it is reproducible. We currently have a supervised prototype, retained weights, one narrow learned demonstration, real but unstable RL attempts, and a recovery implementation under validation. We do not yet have evidence that switching improves the accuracy–compute tradeoff.
+
+[The code](https://github.com/TinevimboMusingadi/knowing-when-to-think-fast-slow) and [postmortem](../POSTMORTEM.md) preserve that distinction. The next claim must come from a stable update and a fair comparison, rather than the appeal of the idea.

@@ -1,0 +1,52 @@
+{
+  "run_id": "20261007-132053",
+  "model": "Qwen/Qwen3-1.7B",
+  "source_run": "20261006-223323",
+  "source_step": 1,
+  "planned_new_updates": 2,
+  "accepted_new_updates": 0,
+  "pilot_passed": false,
+  "restored_numerical_state_finite_on_all_replicas": true,
+  "replicas": [
+    {
+      "rank": 0,
+      "samples_with_finite_inputs": 4,
+      "backward_samples_completed": 4,
+      "optimizer_rejected": true,
+      "minimum_memory_headroom": 0.2176971340924594
+    },
+    {
+      "rank": 1,
+      "samples_with_finite_inputs": 4,
+      "backward_samples_completed": 4,
+      "optimizer_rejected": true,
+      "minimum_memory_headroom": 0.20635006041292012
+    },
+    {
+      "rank": 2,
+      "samples_with_finite_inputs": 4,
+      "backward_samples_completed": 4,
+      "optimizer_rejected": true,
+      "minimum_memory_headroom": 0.1636360487334119
+    },
+    {
+      "rank": 3,
+      "samples_with_finite_inputs": 4,
+      "backward_samples_completed": 4,
+      "optimizer_rejected": true,
+      "minimum_memory_headroom": 0.4550351891936934
+    }
+  ],
+  "failure": "Post-update parameter/optimizer-state validity check failed; this check rejects non-finite tensors and negative second moments. The precise failing component was not captured.",
+  "invalid_checkpoint_published": false,
+  "source_checkpoint_preserved": true,
+  "deletion_verified": true,
+  "deletion_completed_utc": "2026-10-07T13:58:05.595242366Z",
+  "attempt_compute_upper_bound_usd": 3.422146769746144,
+  "cumulative_compute_upper_bound_usd": 57.109109229103716,
+  "storage_reserve_usd": 5,
+  "approved_total_cap_usd": 70,
+  "actual_billing_verified": false,
+  "tunix_port_validated": false,
+  "next_validation": "Isolate the TPU optimizer from generation; compare its update against a CPU reference and capture per-tensor failure diagnostics before another full RL attempt."
+}

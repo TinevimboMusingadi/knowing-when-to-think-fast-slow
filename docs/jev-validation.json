@@ -1,7 +1,7 @@
 {
   "date": "2026-10-07",
   "implementation": "current PyTorch engine",
-  "status": "local_checks_passed_tpu_pilot_pending",
+  "status": "tpu_pilot_failed_optimizer_state",
   "command": "python -m unittest discover -s tests -q",
   "tests_run": 66,
   "failures": 0,
@@ -45,6 +45,10 @@
     "Reload a completed checkpoint and verify predictions and reference state",
     "Validate recoverable GCS upload and owned-resource teardown"
   ],
-  "paid_launch_authorized": true,
-  "budget_note": "User approved a $70 cumulative cap on 2026-10-07. Pilot allowance $8.28, with $5 reserved for storage; no automatic hardware upgrade."
+  "paid_launch_authorized": false,
+  "budget_note": "User approved a $70 cumulative cap on 2026-10-07. The first repaired pilot failed and was deleted early; cumulative compute is conservatively $57.109109, plus a $5 storage reserve. No TPU is running.",
+  "pilot_passed": false,
+  "latest_pilot_report": "rl-pilot-report.json",
+  "user_stopped": true,
+  "test_note": "Last confirmed full suite: 66 passing tests, also confirmed on the TPU VM. A separate 12-test cloud suite passed after watchdog changes. Later diagnostic edits were not tested because the user stopped the work."
 }
