@@ -188,6 +188,29 @@ class TrainingTests(unittest.TestCase):
         loss=torch.nn.functional.cross_entropy(logits,torch.tensor([1]));loss.backward()
         self.assertGreater(model.head.score.weight.grad.abs().sum().item(),0)
 
+    def test_decision_backbone_isolates_candidates_and_resets_positions(self):
+        model=tiny_model().eval();candidates=[{"id":"a","text":"1"},{"id":"b","text":"2"}]
+        backbone=model.lm.get_base_model().model;records=[]
+        def capture(module,args,kwargs,output):
+            records.append((kwargs["position_ids"].clone(),kwargs["attention_mask"].clone(),output.last_hidden_state.detach().clone()))
+        handle=backbone.register_forward_hook(capture,with_kwargs=True)
+        try:
+            model.decision_logits(["state"],[candidates],bucket=32)
+            model.decision_logits(["state"],[[candidates[0],{"id":"b","text":"a much longer alternative"}]],bucket=64)
+        finally:handle.remove()
+        for positions,mask,_ in records:
+            self.assertTrue(torch.equal(positions[0],positions[1]))
+            self.assertTrue(torch.equal(positions[0],torch.arange(positions.shape[1])))
+            self.assertFalse(bool(mask[0,-1]))
+        first_length=int(records[0][1][0].sum())
+        torch.testing.assert_close(records[0][2][0,:first_length],records[1][2][0,:first_length],rtol=1e-5,atol=1e-5)
+
+    def test_decision_scores_ignore_right_padding(self):
+        model=tiny_model().eval();candidates=[{"id":"a","text":"1"},{"id":"b","text":"a longer choice"}]
+        narrow=model.decision_logits(["state"],[candidates],bucket=32)
+        wide=model.decision_logits(["state"],[candidates],bucket=64)
+        torch.testing.assert_close(narrow,wide,rtol=1e-5,atol=1e-5)
+
     def test_grpo_changes_real_parameters(self):
         logits=torch.nn.Parameter(torch.tensor([0.,0.]));opt=torch.optim.SGD([logits],lr=.1)
         old=logits.detach().log_softmax(-1);new=logits.log_softmax(-1)

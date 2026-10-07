@@ -1,0 +1,50 @@
+{
+  "date": "2026-10-07",
+  "implementation": "current PyTorch engine",
+  "status": "local_checks_passed_tpu_pilot_pending",
+  "command": "python -m unittest discover -s tests -q",
+  "tests_run": 65,
+  "failures": 0,
+  "scope": "CPU regression suite, including a small randomly initialized Qwen3 backbone with LoRA and the actual decision head",
+  "checks_passed": [
+    "Candidate permutation preserves reordered scores",
+    "Changing another candidate does not change the untouched backbone branch",
+    "Candidate positions reset and padding is masked",
+    "Decision scores are invariant to additional right padding",
+    "Supervised loss updates the decision head and mode embeddings",
+    "Joint token and categorical GRPO loss updates adapters and decision head",
+    "Frozen reference state is preserved",
+    "Local checkpoint reload restores parameters and rejects corrupted files",
+    "Activation checkpointing preserves joint likelihoods and gradients on CPU",
+    "Optimizer restore preserves original FP32 moments for BF16 parameters",
+    "Numerical state checks reject NaN weights and negative second moments",
+    "Scripted runtime supports JEV, reasoning, clarification and return to JEV"
+  ],
+  "known_failed_checkpoint": {
+    "run": "20261007-084201",
+    "step": 2,
+    "rank": 0,
+    "mode_embedding_nan_count": 18,
+    "mode_embedding_elements": 6144,
+    "embedding_storage_crc32_verified": true,
+    "full_checkpoint_download_verified": false,
+    "usable": false
+  },
+  "not_established": [
+    "Repaired Qwen3-1.7B training stability on four TPU replicas",
+    "Exact cause of the saved step-2 NaNs",
+    "Tunix implementation or numerical parity",
+    "Held-out accuracy, calibration or performance improvement",
+    "Learned mode transitions demonstrated by the production checkpoint"
+  ],
+  "required_tpu_pilot": [
+    "Start from a known-finite checkpoint and verify all replica state",
+    "Measure memory and elapsed cost with the revised output allowance",
+    "Complete updates with finite gradients, weights and optimizer moments on all replicas",
+    "Verify meaningful adapter and head updates on nonzero decision advantages",
+    "Reload a completed checkpoint and verify predictions and reference state",
+    "Validate recoverable GCS upload and owned-resource teardown"
+  ],
+  "paid_launch_authorized": false,
+  "budget_note": "The requested increase from the approved $60 ceiling to $70 is still pending. Local validation does not authorize that increase."
+}
