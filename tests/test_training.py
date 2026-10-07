@@ -9,7 +9,7 @@ from switching.model import SwitchModel,DecisionHead
 from switching.batching import pack
 from switching.storage import Checkpoints,checksum
 from switching.train import grpo_loss,advantages,memory_headroom,is_memory_exhaustion,project_training_seconds,ensure_all_gradients,gradient_norm
-from switching.optim import DeviceAdamW,numerical_state_valid
+from switching.optim import DeviceAdamW,numerical_state_valid,numerical_state_failures
 from switching.inspect_checkpoint import inspect
 
 class TinyTokenizer:
@@ -132,9 +132,15 @@ class TrainingTests(unittest.TestCase):
         self.assertTrue(numerical_state_valid(torch.nn.ParameterList([parameter]),restored))
         restored.state[parameter]["exp_avg_sq"][0]=-1
         self.assertFalse(numerical_state_valid(torch.nn.ParameterList([parameter]),restored))
+        failures=numerical_state_failures(torch.nn.ParameterList([parameter]),restored)
+        self.assertEqual(failures[0]["tensor"],"optimizer.0.exp_avg_sq")
+        self.assertEqual(failures[0]["negative_second_moments"],1)
         restored.state[parameter]["exp_avg_sq"][0]=0
         with torch.no_grad():parameter[0]=float("nan")
         self.assertFalse(numerical_state_valid(torch.nn.ParameterList([parameter]),restored))
+        failures=numerical_state_failures(torch.nn.ParameterList([parameter]),restored)
+        self.assertEqual(failures[0]["tensor"],"0")
+        self.assertEqual(failures[0]["nonfinite"],1)
 
     def test_head_permutation(self):
         torch.manual_seed(1);head=DecisionHead(32).eval();x=torch.randn(2,4,32);order=[2,0,3,1]

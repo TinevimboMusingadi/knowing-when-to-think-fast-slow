@@ -31,15 +31,17 @@ def sdk_command(executable,args):
 def gcloud(*args,check=True,timeout=120):
     executable=shutil.which("gcloud.cmd") or shutil.which("gcloud")
     if not executable:raise RuntimeError("Google Cloud CLI unavailable")
-    result=subprocess.run(sdk_command(executable,args),capture_output=True,text=True,timeout=timeout)
-    if check and result.returncode:raise RuntimeError(result.stderr.strip())
+    options={"stdin":subprocess.DEVNULL}
+    if os.name=="nt":options["creationflags"]=subprocess.CREATE_NO_WINDOW
+    result=subprocess.run(sdk_command(executable,args),capture_output=True,text=True,timeout=timeout,**options)
+    if check and result.returncode:raise RuntimeError(result.stderr.strip() or result.stdout.strip() or f"gcloud exited with code {result.returncode}")
     return result
 
 def describe(session):
     result=gcloud("compute","tpus","tpu-vm","describe",session["name"],"--project",session["project"],"--zone",session["zone"],"--format=json",check=False)
     if result.returncode:
         if "NOT_FOUND" in result.stderr or "not found" in result.stderr.lower():return None
-        raise RuntimeError(result.stderr.strip())
+        raise RuntimeError(result.stderr.strip() or result.stdout.strip() or f"gcloud exited with code {result.returncode}")
     return json.loads(result.stdout)
 
 def delete_owned(session):
@@ -51,7 +53,7 @@ def delete_owned(session):
     return True
 
 def watchdog(path):
-    session=json.loads(Path(path).read_text()); misses=0
+    session=json.loads(Path(path).read_text()); misses=0;last_state=None
     while time.time()<session["deadline"]:
         try:resource=describe(session)
         except (RuntimeError,subprocess.TimeoutExpired) as exc:
@@ -60,7 +62,11 @@ def watchdog(path):
         if resource is None:
             misses+=1
             if misses>=3:return
-        else:misses=0
+        else:
+            misses=0
+            if resource.get("state")!=last_state:
+                last_state=resource.get("state")
+                print(json.dumps({"event":"watchdog-inspection-confirmed","state":last_state,"deadline":session["deadline"]}),flush=True)
         time.sleep(30)
     last_error=None
     for attempt in range(3):
@@ -138,6 +144,7 @@ def main():
     if args.watchdog:return watchdog(args.watchdog)
     if args.cleanup:return delete_owned(json.loads(Path(args.cleanup).read_text()))
     if not args.launch:parser.error("choose --launch, --watchdog, or --cleanup")
+    raise RuntimeError("Historical PyTorch TPU launches are disabled. Use python -m switching.experiment_v2 --execute after the Tunix acceptance gates pass.")
     globals()["ZONE"]=args.zone
     root=Path(__file__).resolve().parents[1]
     # Always validate the exact sanitized payload before uploading it.
@@ -188,8 +195,8 @@ def main():
     try:
         gcloud("compute","tpus","tpu-vm","create",session["name"],"--project",PROJECT,"--zone",ZONE,"--accelerator-type",ACCELERATOR,"--version","v2-alpha-tpuv5-lite","--preemptible","--labels",f"kws_run={run_id}","--scopes","https://www.googleapis.com/auth/cloud-platform","--metadata-from-file",f"startup-script={script}",timeout=600)
         session["state"]="created";session_path.write_text(json.dumps(session,indent=2))
-        kwargs={"stdout":open(folder/"watchdog.log","a"),"stderr":subprocess.STDOUT}
-        if os.name=="nt":kwargs["creationflags"]=subprocess.CREATE_NO_WINDOW|subprocess.DETACHED_PROCESS
+        kwargs={"stdout":open(folder/"watchdog.log","a"),"stderr":subprocess.STDOUT,"stdin":subprocess.DEVNULL}
+        if os.name=="nt":kwargs["creationflags"]=subprocess.CREATE_NO_WINDOW
         subprocess.Popen([sys.executable,str(Path(__file__).resolve()),"--watchdog",str(session_path)],**kwargs)
         print(json.dumps(session,indent=2))
     except Exception as exc:

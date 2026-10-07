@@ -68,3 +68,20 @@ def numerical_state_valid(model,optimizer):
                 checks.append(torch.isfinite(value).all())
                 if name=="exp_avg_sq":checks.append((value>=0).all())
     return bool(torch.stack(checks).all().item()) if checks else True
+
+def numerical_state_failures(model,optimizer):
+    """Capture failing tensor names on CPU after the fast device guard rejects an update."""
+    names={parameter:name for name,parameter in model.named_parameters()}
+    failures=[]
+    def inspect(value,name,nonnegative=False):
+        value=value.detach().cpu()
+        nonfinite=int((~torch.isfinite(value)).sum().item())
+        negative=int((value<0).sum().item()) if nonnegative else 0
+        if nonfinite or negative:
+            failures.append({"tensor":name,"dtype":str(value.dtype),"shape":list(value.shape),"nonfinite":nonfinite,"negative_second_moments":negative})
+    for parameter,name in names.items():
+        if parameter.requires_grad:inspect(parameter,name)
+    for parameter,state in optimizer.state.items():
+        for name,value in state.items():
+            if torch.is_tensor(value):inspect(value,f"optimizer.{names.get(parameter,'unnamed')}.{name}",name=="exp_avg_sq")
+    return failures

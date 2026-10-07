@@ -9,6 +9,18 @@ spec=importlib.util.spec_from_file_location("cloud",Path(__file__).parents[1]/"s
 cloud=importlib.util.module_from_spec(spec);spec.loader.exec_module(cloud)
 
 class CloudTests(unittest.TestCase):
+    def test_cloud_child_has_closed_stdin_and_hidden_window(self):
+        result=cloud.subprocess.CompletedProcess([],0,stdout="{}",stderr="")
+        with patch.object(cloud.shutil,"which",return_value="gcloud.cmd"),patch.object(cloud,"sdk_command",return_value=["python","gcloud.py"]),patch.object(cloud.subprocess,"run",return_value=result) as run:
+            cloud.gcloud("info")
+            self.assertEqual(run.call_args.kwargs["stdin"],cloud.subprocess.DEVNULL)
+            if cloud.os.name=="nt":self.assertEqual(run.call_args.kwargs["creationflags"],cloud.subprocess.CREATE_NO_WINDOW)
+
+    def test_empty_cloud_errors_include_exit_code(self):
+        result=cloud.subprocess.CompletedProcess([],17,stdout="",stderr="")
+        with patch.object(cloud.shutil,"which",return_value="gcloud.cmd"),patch.object(cloud,"sdk_command",return_value=["python","gcloud.py"]),patch.object(cloud.subprocess,"run",return_value=result):
+            with self.assertRaisesRegex(RuntimeError,"code 17"):cloud.gcloud("info")
+
     def test_windows_sdk_bypasses_console_batch_wrapper(self):
         with tempfile.TemporaryDirectory() as folder:
             root=Path(folder);entry=root/"bin/gcloud.cmd";entry.parent.mkdir();entry.touch()

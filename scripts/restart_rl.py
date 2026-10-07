@@ -69,6 +69,7 @@ exit "$RESULT"
 
 
 def main():
+    raise RuntimeError("The old RL engine is a reference only. Use the gated Tunix recovery runner; do not resume invalid numerical state.")
     parser = argparse.ArgumentParser()
     parser.add_argument("--launch", action="store_true")
     parser.add_argument("--continue-rl", action="store_true")
@@ -166,9 +167,9 @@ def main():
                      "--metadata-from-file", f"startup-script={script}", timeout=600)
         session["state"] = "created"
         session_path.write_text(json.dumps(session, indent=2))
-        options = {"stdout": open(folder / "watchdog.log", "a"), "stderr": subprocess.STDOUT}
+        options = {"stdout": open(folder / "watchdog.log", "a"), "stderr": subprocess.STDOUT,"stdin":subprocess.DEVNULL}
         if os.name == "nt":
-            options["creationflags"] = subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS
+            options["creationflags"] = subprocess.CREATE_NO_WINDOW
         subprocess.Popen([sys.executable, str(root / "scripts/cloud.py"), "--watchdog", str(session_path)], **options)
     except Exception as exc:
         session.update(state="failed", error=str(exc))

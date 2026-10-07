@@ -1,4 +1,5 @@
-"""Replace one owned stalled evaluation with budget-limited real RL on its TPU."""
+"""Historical handoff is disabled by the Tunix recovery experiment."""
+raise RuntimeError("Historical TPU handoff is disabled; use the gated Tunix recovery runner.")
 import argparse
 import json
 import os

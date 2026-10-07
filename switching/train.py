@@ -11,7 +11,7 @@ from pathlib import Path
 import torch
 from .batching import pack,supervised_items
 from .model import SwitchModel
-from .optim import DeviceAdamW,numerical_state_valid
+from .optim import DeviceAdamW,numerical_state_valid,numerical_state_failures
 from .runtime import action_logps,rollout_group,synchronize
 from .storage import Budget,Checkpoints,checksum
 
@@ -107,6 +107,7 @@ def worker(index,args):
     config=json.loads(Path(args.config).read_text()); random.seed(config["seed"]); torch.manual_seed(config["seed"])
     xm=None; rank=0; world=1
     if args.device=="tpu":
+        raise RuntimeError("PyTorch TPU training is disabled for recovery. Use switching.experiment_v2; CPU reference checks remain available.")
         import torch_xla
         import torch_xla.runtime as xr
         import torch_xla.core.xla_model as xm
@@ -160,6 +161,7 @@ def worker(index,args):
         if xm:state_valid=xm.mesh_reduce("optimizer-state-agreement",state_valid,all)
         if not state_valid:
             metric(root/f"rl-numerics-rank{rank}.jsonl",{"event":"optimizer-state-refused","step":progress["step"],"timestamp":time.time()})
+            metric(root/f"rl-numerics-rank{rank}.jsonl",{"event":"optimizer-state-diagnostics","step":progress["step"],"failures":numerical_state_failures(model,optimizer),"timestamp":time.time()})
             raise RuntimeError("non-finite optimizer state or parameters; checkpoint publication refused")
         scheduler.step(); optimizer.zero_grad(set_to_none=True); progress["step"]+=1
         return norm_value
