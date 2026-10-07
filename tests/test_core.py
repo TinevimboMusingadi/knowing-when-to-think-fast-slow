@@ -78,4 +78,17 @@ class CoreTests(unittest.TestCase):
             b=Budget(Path(root)/"budget.json",3600,"pilot",{"pilot":5},start=0)
             with self.assertRaises(RuntimeError):b.check()
 
+    def test_budget_explicit_ceiling_overrides_untrusted_ledger(self):
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as root:
+            path=Path(root)/"budget.json"
+            path.write_text(json.dumps({"stages":{"prior":55},"limit":999}))
+            with patch("switching.storage.time.time",return_value=0):
+                b=Budget(path,4.8,"rl",{"rl":8.28},start=0,hard_ceiling=60)
+                self.assertEqual(b.remaining(),5)
+                b.finish()
+                self.assertEqual(json.loads(path.read_text())["limit"],60)
+                original=Budget(path,4.8,"rl",{"rl":8.28},start=0)
+                self.assertLess(original.remaining(),0)
+
 if __name__=="__main__":unittest.main()

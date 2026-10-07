@@ -15,18 +15,21 @@ def rng_tuple(value):
     return tuple(rng_tuple(item) for item in value) if isinstance(value,(tuple,list)) else value
 
 class Budget:
-    def __init__(self, path, rate, stage, limits, start=None,prior_spend=0):
+    def __init__(self, path, rate, stage, limits, start=None,prior_spend=0,hard_ceiling=50):
         self.path=Path(path); self.rate=float(rate); self.stage=stage; self.limits=limits
         if self.rate <= 0: raise ValueError("whole-slice hourly rate must be verified and positive")
         self.started=time.time() if start is None else start
-        self.previous=json.loads(self.path.read_text()) if self.path.exists() else {"stages":{"pilot":prior_spend},"limit":50}
+        if not 0 < hard_ceiling < float("inf"): raise ValueError("spending ceiling must be finite and positive")
+        self.hard_ceiling=hard_ceiling
+        self.previous=json.loads(self.path.read_text()) if self.path.exists() else {"stages":{"pilot":prior_spend}}
+        self.previous["limit"]=hard_ceiling
         self.base_stage=self.previous["stages"].get(stage,0)
 
     def remaining(self):
         cost=(time.time()-self.started)/3600*self.rate*1.15
         stage_cost=self.base_stage+cost
         total=sum(self.previous["stages"].values())+cost
-        return min(self.limits[self.stage]-stage_cost,50-total)
+        return min(self.limits[self.stage]-stage_cost,self.hard_ceiling-total)
 
     def check(self, seconds_required=0):
         if self.remaining() <= seconds_required/3600*self.rate*1.15:

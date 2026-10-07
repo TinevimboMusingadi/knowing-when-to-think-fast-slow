@@ -24,6 +24,23 @@ class RestartTests(unittest.TestCase):
         self.assertIn('"runs/20261007-010000/sft"', script)
         self.assertIn("trap cleanup EXIT", script)
 
+    def test_continuation_restores_all_replicas_without_reset(self):
+        session = {"run_id": "test", "name": "kws-test", "created": 123}
+        sources = [f"gs://bucket/rl-rank{rank}" for rank in range(4)]
+        script = restart_rl.startup(session, "gs://bucket/payload", sources)
+        for rank, source in enumerate(sources):
+            self.assertIn(source, script)
+            self.assertIn(f"runs/test/restore/rank{rank}", script)
+        self.assertIn('--resume "$RUN/restore/rank{rank}" --restore-optimizer', script)
+        self.assertNotIn("--max-steps 3", script)
+        self.assertNotIn("--phase sft", script)
+
+    def test_revised_cap_keeps_storage_reserved(self):
+        self.assertEqual(restart_rl.restart_allowance(44.95,8.28,60),8.28)
+        self.assertAlmostEqual(restart_rl.restart_allowance(44.95,20,60),10.05)
+        with self.assertRaises(ValueError):
+            restart_rl.restart_allowance(float('nan'),8.28,60)
+
 
 if __name__ == "__main__":
     unittest.main()

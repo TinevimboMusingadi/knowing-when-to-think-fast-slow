@@ -12,6 +12,10 @@ class CloudTests(unittest.TestCase):
         self.assertEqual(seconds_remaining({"stages":{"sft":49}},"rl",10,0,0,{"rl":15}),313)
         self.assertEqual(seconds_remaining({"stages":{"sft":50}},"rl",10,0,0,{"rl":15}),0)
 
+    def test_stage_timer_uses_explicit_revised_cap(self):
+        self.assertEqual(seconds_remaining({"stages":{"prior":44.95}},"rl",4.8,0,0,{"rl":8.28},60),5400)
+        self.assertEqual(seconds_remaining({"stages":{"prior":60}},"rl",4.8,0,0,{"rl":8.28},60),0)
+
     def test_fresh_sft_does_not_restore_an_old_dataset(self):
         session={"run_id":"test","name":"kws-test","created":1,"fresh_sft_from_run":"20261006-115020"}
         script=cloud.startup(session,"gs://bucket/payload.tar.gz")

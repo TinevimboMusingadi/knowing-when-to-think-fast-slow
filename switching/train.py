@@ -119,7 +119,7 @@ def worker(index,args):
             progress["data_sha256"]=data_hash;progress["validation_sha256"]=checksum(args.validation)
             progress["training_config"]=config
     if args.phase=="rl" and not args.resume: raise ValueError("RL requires an SFT checkpoint")
-    budget=Budget(root/"budget.json",args.hourly_rate,args.phase,config["budget"],start=args.started,prior_spend=config.get("prior_spend_upper_bound",0))
+    budget=Budget(root/"budget.json",args.hourly_rate,args.phase,config["budget"],start=args.started,prior_spend=config.get("prior_spend_upper_bound",0),hard_ceiling=config.get("hard_ceiling",50))
     rows=load_rows(args.data); val=load_rows(args.validation)
     best=float("inf"); start=time.perf_counter();reference=None
     def update(loss):
@@ -295,7 +295,7 @@ def worker(index,args):
                 progress["cursor"]=cursor+1
                 if rank==0: metric(root/"metrics.jsonl",{"phase":"rl","step":progress["step"],"loss":total_loss,"gradient_norm":update_gradient_norm,"seconds_optimizer_update":time.perf_counter()-rl_started,"reward":sum(s["reward"] for s in samples)/len(samples),"tokens":sum(s["tokens"] for s in samples),"equal_reward_group":bool(torch.all(adv==0).item()),"timestamp":time.time()})
                 save("latest")  # Budget-limited RL must preserve every completed update.
-                if progress["step"]%config["checkpoint_interval"]==0 or progress["step"]==1:
+                if progress["step"]%config.get("rl_validation_interval",config["checkpoint_interval"])==0 or progress["step"]==1:
                     value=validate()
                     if value<best: best=value; save("best-rl")
                 if args.max_steps and progress["step"]>=args.max_steps: break

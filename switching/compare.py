@@ -108,7 +108,7 @@ def main():
     manager=Checkpoints(out/"restore");manager.load(args.sft,model);sft=model.trainable_state();rl=None
     if args.rl:manager.load(args.rl,model);rl=model.trainable_state()
     manager.close()
-    budget=Budget(args.budget_path,args.hourly_rate,"evaluation",config["budget"]) if args.budget_path else None
+    budget=Budget(args.budget_path,args.hourly_rate,"evaluation",config["budget"],hard_ceiling=config.get("hard_ceiling",50)) if args.budget_path else None
     def check_budget():
         if budget:budget.check()
     previous_handler=signal.getsignal(signal.SIGTERM)

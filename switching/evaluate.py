@@ -35,7 +35,7 @@ def main():
     p=argparse.ArgumentParser();p.add_argument("--checkpoint",required=True);p.add_argument("--data",default="data/test.jsonl");p.add_argument("--config",default="configs/experiment.json");p.add_argument("--output",required=True)
     p.add_argument("--policy",choices=["learned","always_direct","always_cot","always_jev","confidence"],default="learned");p.add_argument("--threshold",type=float);p.add_argument("--batch-size",type=int,default=4);p.add_argument("--limit",type=int,default=0);p.add_argument("--device",choices=["cpu","tpu"],default="tpu");p.add_argument("--budget-path");p.add_argument("--hourly-rate",type=float)
     args=p.parse_args();config=json.loads(Path(args.config).read_text())
-    budget=Budget(args.budget_path,args.hourly_rate,"evaluation",config["budget"]) if args.budget_path else None
+    budget=Budget(args.budget_path,args.hourly_rate,"evaluation",config["budget"],hard_ceiling=config.get("hard_ceiling",50)) if args.budget_path else None
     if args.policy=="confidence" and args.threshold is None: p.error("confidence baseline requires a threshold chosen on validation only")
     if args.device=="tpu":
         import torch_xla; device=torch_xla.device(); dtype=torch.bfloat16
