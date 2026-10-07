@@ -1,8 +1,12 @@
 """Owned Tunix-only TPU lifecycle; independent deadlines and verified absence."""
 import datetime
+import base64
+import hashlib
 import json
 import os
 import re
+import shutil
+import uuid
 from pathlib import Path
 import subprocess
 import sys
@@ -11,6 +15,54 @@ import time
 from scripts.cloud import gcloud,describe
 from switching.recovery_budget import RecoveryBudget
 from switching.experiment_v2 import launch_gates
+
+
+def observed_host_fingerprint(output,ip):
+    keys=set()
+    for line in output.splitlines():
+        parts=line.split()
+        if len(parts)==3 and parts[0] in {ip,f'[{ip}]:22'} and parts[1]=='ssh-ed25519':keys.add(parts[2])
+    if len(keys)!=1:raise RuntimeError('one public host key is required for the owned endpoint')
+    digest=hashlib.sha256(base64.b64decode(next(iter(keys)),validate=True)).digest()
+    return 'SHA256:'+base64.b64encode(digest).decode().rstrip('=')
+
+
+def remote_reply_verified(result,nonce):
+    # The TPU gcloud command can report success after PuTTY abandons a prompt.
+    # A zero exit status alone must never publish CONNECTION_VERIFIED.
+    return result.returncode==0 and nonce in result.stdout.splitlines()
+
+
+def verify_remote_access(session,out):
+    resource=describe(session)
+    if resource is None or resource.get('labels',{}).get('kws_run')!=session['run_id'] or resource.get('labels',{}).get('kws_schema')!='v2':
+        raise PermissionError('remote access requires verified resource ownership')
+    ip=resource['networkEndpoints'][0]['accessConfig']['externalIp']
+    identity=['--project',session['project'],'--zone',session['zone'],'--worker','0','--quiet']
+    fingerprint=None;flags=[]
+    if os.name=='nt':
+        scanner=shutil.which('ssh-keyscan.exe')
+        if not scanner:raise RuntimeError('Windows OpenSSH public host-key scanner unavailable')
+        scanned=subprocess.run([scanner,'-T','10','-t','ed25519',ip],capture_output=True,text=True,
+                               timeout=20,creationflags=subprocess.CREATE_NO_WINDOW)
+        fingerprint=observed_host_fingerprint(scanned.stdout,ip)
+        pinned=Path(out)/'remote-host-keys'/f"{session['run_id']}.json"
+        pinned.parent.mkdir(parents=True,exist_ok=True)
+        if pinned.exists() and json.loads(pinned.read_text())!={'ip':ip,'fingerprint':fingerprint,'run_id':session['run_id']}:
+            raise RuntimeError('owned endpoint host key changed; refusing connection')
+        pinned.write_text(json.dumps({'ip':ip,'fingerprint':fingerprint,'run_id':session['run_id']},indent=2))
+        flags=['--ssh-flag=-batch','--ssh-flag=-hostkey','--ssh-flag='+fingerprint]
+    else:flags=['--ssh-flag=-oStrictHostKeyChecking=accept-new']
+    nonce='KWS_REMOTE_'+uuid.uuid4().hex
+    result=gcloud('compute','tpus','tpu-vm','ssh',session['name'],*identity,*flags,
+                  '--command',f'printf "%s\\n" {nonce}',check=False,timeout=60)
+    if not remote_reply_verified(result,nonce):raise RuntimeError('remote command response not verified; training gate remains closed')
+    after=describe(session)
+    if after is None or after.get('labels')!=resource.get('labels') or after['networkEndpoints'][0]['accessConfig']['externalIp']!=ip:
+        raise RuntimeError('owned endpoint changed during remote verification')
+    report={'passed':True,'run_id':session['run_id'],'checked_at':time.time(),'owned_resource_before_after':True,
+            'host_key_sha256':fingerprint,'exact_remote_reply':True,'global_ssh_configuration_modified':False}
+    (Path(out)/'remote-access.json').write_text(json.dumps(report,indent=2));return report
 
 
 def delete_and_verify(session,timeout=300):
@@ -221,9 +273,8 @@ def execute(config,out,data):
                "--labels",f"kws_run={run},kws_schema=v2","--scopes","https://www.googleapis.com/auth/cloud-platform",
                "--metadata-from-file",f"startup-script={script}",timeout=600)
         session["state"]="created";path.write_text(json.dumps(session,indent=2))
-        gcloud('compute','tpus','tpu-vm','ssh',session['name'],'--project',session['project'],'--zone',session['zone'],
-               '--worker','0','--command','true','--quiet',timeout=120)
-        connection=out/'CONNECTION_VERIFIED';connection.write_text(run)
+        connection_report=verify_remote_access(session,out)
+        connection=out/'CONNECTION_VERIFIED';connection.write_text(json.dumps(connection_report))
         gcloud('storage','cp',str(connection),session['gcs_prefix']+'/CONNECTION_VERIFIED',timeout=60)
         while time.time()<session["deadline"]:
             resource=describe(session)
