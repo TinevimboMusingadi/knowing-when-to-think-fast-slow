@@ -14,7 +14,7 @@
   "checkpoint_interval": 50,
   "max_transitions": 4,
   "max_lookups": 2,
-  "max_generated_tokens": 512,
+  "max_generated_tokens": null,
   "group_size": 4,
   "clip_epsilon": 0.2,
   "kl_coefficient": 0.02,

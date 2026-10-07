@@ -32,14 +32,14 @@ def token_logps(model, prompt, completion, bucket=2048):
     target=torch.tensor(completion,device=device)
     return logits.log_softmax(-1).gather(1,target[:,None]).squeeze(1)
 
-def rollout_group(model, episodes, max_tokens=512, max_transitions=4, max_lookups=2, sample=True, policy="learned", threshold=0.8):
+def rollout_group(model, episodes, max_tokens=None, max_transitions=4, max_lookups=2, sample=True, policy="learned", threshold=0.8):
     device=next(model.parameters()).device
     envs=[EpisodeEnv({k:v for k,v in e.items() if k!="decision_stages"} if policy!="learned" else e,max_transitions,max_lookups) for e in episodes]
     traces=[[] for _ in episodes]; tokens=[0]*len(episodes); forwards=[0]*len(episodes)
     sync_start=time.perf_counter(); synchronize(device); start=time.perf_counter()
     model.eval()
     for action_index in range(8):
-        active=[i for i,e in enumerate(envs) if not e.done and tokens[i]<max_tokens]
+        active=[i for i,e in enumerate(envs) if not e.done and (max_tokens is None or tokens[i]<max_tokens)]
         if not active: break
         # Static regimes are behavior baselines; learned policies select their own mode.
         if policy in {"always_jev","confidence"} and action_index==0:
@@ -63,7 +63,7 @@ def rollout_group(model, episodes, max_tokens=512, max_transitions=4, max_lookup
             break
         input_ids=torch.tensor([[model.tokenizer.pad_token_id]*(width-len(p))+p for p in actual_prompts],device=device)
         attention=torch.tensor([[0]*(width-len(p))+[1]*len(p) for p in actual_prompts],device=device)
-        remaining=min(max_tokens-tokens[i] for i in active)
+        remaining=2048-width if max_tokens is None else min(max_tokens-tokens[i] for i in active)
         length=min(remaining,2048-width)
         with torch.no_grad():
             if device.type=="xla":
@@ -122,7 +122,7 @@ def action_logps(model,trace):
 
 class SessionRuntime:
     """Interactive inference pauses for users; fixture auto-replies are only for evaluation."""
-    def __init__(self,model,max_transitions=4,max_lookups=2,max_tokens=512):
+    def __init__(self,model,max_transitions=4,max_lookups=2,max_tokens=None):
         self.model=model;self.sessions={};self.limits=(max_transitions,max_lookups,max_tokens)
 
     def run(self,request,session_id,lookup=None):
@@ -144,7 +144,7 @@ class SessionRuntime:
         s=self.sessions[session_id];device=next(self.model.parameters()).device
         self.model.eval()
         for _ in range(8-s["actions"]):
-            remaining=self.limits[2]-s["tokens"]
+            remaining=2048 if self.limits[2] is None else self.limits[2]-s["tokens"]
             if remaining<=0:break
             prompt=self.model.prompt_ids(s["messages"])
             if len(prompt)>=2048:break
