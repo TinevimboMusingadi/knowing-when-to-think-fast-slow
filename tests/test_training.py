@@ -43,6 +43,11 @@ class TrainingTests(unittest.TestCase):
             self.assertEqual(metrics[0]["step"],1);self.assertGreater(metrics[0]["gradient_norm"],0.)
             self.assertTrue((root/"rl/checkpoints/latest-rank0.json").exists())
             self.assertTrue((root/"rl/rl-episodes-rank0.jsonl").exists())
+            events=[json.loads(line) for line in (root/"rl/rl-progress-rank0.jsonl").read_text().splitlines()]
+            phases=[event for event in events if event["event"]=="phase-complete"]
+            self.assertEqual([event["phase"] for event in phases],["policy-scoring","reference-scoring"]+["backward"]*4+["optimizer"])
+            self.assertTrue(all(event["seconds"]>=0 for event in phases))
+            self.assertEqual([event["sample"] for event in phases if event["phase"]=="backward"],list(range(4)))
     def test_gradient_inspection_does_not_poison_healthy_gradients(self):
         model=torch.nn.Linear(2,1);model.weight.grad=torch.tensor([[3.,4.]]);model.bias.grad=torch.tensor([0.])
         self.assertEqual(float(gradient_norm(model)),5.)

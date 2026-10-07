@@ -37,6 +37,10 @@ The recorded recovery cost bound was $1.76, bringing the cumulative compute
 bound to $44.95 while preserving the $5 storage reserve. No additional paid
 attempt fits that conservative allocation until billing is reconciled or the
 experiment budget is revised.
+RL progress logs now separate policy scoring, reference scoring, each backward
+pass, and optimizer execution. Completion timings include the existing device
+synchronization where present; these diagnostics have CPU integration coverage
+and have not yet been exercised in another TPU run.
 
 ## Data
 

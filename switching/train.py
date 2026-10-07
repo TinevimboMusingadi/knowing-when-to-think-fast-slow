@@ -1,5 +1,6 @@
 """Actual SFT and clipped group-relative policy optimization on CPU or replicated XLA."""
 import argparse
+import contextlib
 import json
 import math
 import random
@@ -73,6 +74,19 @@ def load_rows(path):
 def metric(path,record):
     path.parent.mkdir(parents=True,exist_ok=True)
     with path.open("a",encoding="utf-8") as stream: stream.write(json.dumps(record)+"\n")
+
+@contextlib.contextmanager
+def timed_rl_phase(path,cursor,phase,sample=None):
+    """Preserve stage boundaries even if a later scoring operation stalls."""
+    fields={"cursor":cursor,"phase":phase}
+    if sample is not None:fields["sample"]=sample
+    started=time.perf_counter();completed=False
+    metric(path,{**fields,"event":"phase-start","timestamp":time.time()})
+    try:
+        yield
+        completed=True
+    finally:
+        metric(path,{**fields,"event":"phase-complete" if completed else "phase-failed","seconds":time.perf_counter()-started,"timestamp":time.time()})
 
 def worker(index,args):
     config=json.loads(Path(args.config).read_text()); random.seed(config["seed"]); torch.manual_seed(config["seed"])
@@ -255,11 +269,14 @@ def worker(index,args):
                 metric(root/f"rl-episodes-rank{rank}.jsonl",{"cursor":cursor,"samples":samples,"timestamp":time.time()})
                 metric(root/f"rl-progress-rank{rank}.jsonl",{"event":"rollout-complete","cursor":cursor,"rewards":[s["reward"] for s in samples],"tokens":[s["tokens"] for s in samples],"errors":[s["error"] for s in samples],"seconds":time.perf_counter()-rl_started,"timestamp":time.time()})
                 adv=advantages([s["reward"] for s in samples]).to(device)
-                with torch.no_grad(): old=[action_logps(model,s["trace"]).detach() for s in samples]
-                synchronize(device)
-                with model.reference(reference),torch.no_grad():
-                    ref=[action_logps(model,s["trace"]).detach() for s in samples]
+                phase_log=root/f"rl-progress-rank{rank}.jsonl"
+                with timed_rl_phase(phase_log,cursor,"policy-scoring"),torch.no_grad():
+                    old=[action_logps(model,s["trace"]).detach() for s in samples]
                     synchronize(device)
+                with timed_rl_phase(phase_log,cursor,"reference-scoring"):
+                    with model.reference(reference),torch.no_grad():
+                        ref=[action_logps(model,s["trace"]).detach() for s in samples]
+                        synchronize(device)
                 model.eval()  # Deterministic likelihoods: LoRA/head dropout disabled.
                 optimizer.zero_grad(set_to_none=True); total_loss=0
                 for j,sample in enumerate(samples):
@@ -270,8 +287,12 @@ def worker(index,args):
                     safe=finite if not xm else xm.mesh_reduce("rl-input-agreement",finite,all)
                     metric(root/f"rl-numerics-rank{rank}.jsonl",{"cursor":cursor,"sample":j,"finite":finite,"ratio_tail_actions":int(((new-old[j]).abs()>bound).sum().item()),"kl_tail_actions":int(((ref[j]-new).abs()>bound).sum().item()),"timestamp":time.time()})
                     if not safe:raise RuntimeError("non-finite RL input/loss; backward refused on all replicas")
-                    update(loss); total_loss+=float(loss.item())
-                update_gradient_norm=optimizer_step(); progress["cursor"]=cursor+1
+                    with timed_rl_phase(phase_log,cursor,"backward",sample=j):
+                        update(loss)
+                    total_loss+=float(loss.item())
+                with timed_rl_phase(phase_log,cursor,"optimizer"):
+                    update_gradient_norm=optimizer_step()
+                progress["cursor"]=cursor+1
                 if rank==0: metric(root/"metrics.jsonl",{"phase":"rl","step":progress["step"],"loss":total_loss,"gradient_norm":update_gradient_norm,"seconds_optimizer_update":time.perf_counter()-rl_started,"reward":sum(s["reward"] for s in samples)/len(samples),"tokens":sum(s["tokens"] for s in samples),"equal_reward_group":bool(torch.all(adv==0).item()),"timestamp":time.time()})
                 save("latest")  # Budget-limited RL must preserve every completed update.
                 if progress["step"]%config["checkpoint_interval"]==0 or progress["step"]==1:
