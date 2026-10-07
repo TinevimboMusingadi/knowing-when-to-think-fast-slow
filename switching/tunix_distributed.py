@@ -21,7 +21,11 @@ class Replicas:
             clone.limits=dict(runtime.limits)
             for name in ("temperature","top_p","top_k","suppress_jev","stop_at_jev","thinking"):
                 if hasattr(runtime,name):setattr(clone,name,getattr(runtime,name))
-            clone._call=jax.jit(clone._language);clone._head=jax.jit(clone._decision)
+            # Both compiled functions receive frozen and trainable state explicitly.
+            # Sharing them retains compilation across phases without a bound-method
+            # cycle that keeps a closed replica's full backbone alive.
+            clone._call=runtime._call;clone._head=runtime._head
+            clone._policy_cache=(runtime.actor,clone.actor);clone._reference_cache=None
             self.runtimes.append(clone)
         self.mesh=Mesh(np.array(self.devices),('data',))
         def average(values):return jax.tree.map(lambda x:jax.lax.pmean(x[0],"data"),values)
@@ -32,8 +36,16 @@ class Replicas:
         def run(index):
             device=self.devices[index]
             with jax.default_device(device):
-                policy=jax.device_put(actor,SingleDeviceSharding(device));ref=jax.device_put(reference,SingleDeviceSharding(device))
-                return operation(self.runtimes[index],policy,ref,batches[index],jax.device_put(keys[index],SingleDeviceSharding(device)))
+                runtime=self.runtimes[index]
+                if runtime._policy_cache[0] is not actor:
+                    runtime._policy_cache=(actor,jax.device_put(actor,SingleDeviceSharding(device)))
+                policy=runtime._policy_cache[1]
+                if reference is actor:ref=policy
+                else:
+                    if runtime._reference_cache is None or runtime._reference_cache[0] is not reference:
+                        runtime._reference_cache=(reference,jax.device_put(reference,SingleDeviceSharding(device)))
+                    ref=runtime._reference_cache[1]
+                return operation(runtime,policy,ref,batches[index],jax.device_put(keys[index],SingleDeviceSharding(device)))
         futures=[self.pool.submit(run,i) for i in range(len(self.devices))]
         # Completion order reveals replica errors instead of waiting on rank zero first.
         results=[None]*len(futures)
@@ -51,4 +63,11 @@ class Replicas:
         reduced=self._average(stacked);assert_finite(reduced,"reduced-gradients")
         return jax.device_put(reduced,SingleDeviceSharding(self.devices[0]))
 
-    def close(self):self.pool.shutdown(wait=True,cancel_futures=True)
+    def close(self):
+        self.pool.shutdown(wait=True,cancel_futures=True)
+        # Release only this replica pool. The original runtime keeps its base
+        # and shared compiled functions for the next phase.
+        for runtime in self.runtimes:
+            runtime._policy_cache=None;runtime._reference_cache=None
+            runtime.actor=None;runtime.frozen=None
+        self.runtimes.clear()

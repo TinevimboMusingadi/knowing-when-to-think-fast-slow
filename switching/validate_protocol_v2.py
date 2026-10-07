@@ -75,6 +75,12 @@ def validate(folder,output,development=False):
         reduced=replicas.mean(gradients)
         for value in jax.tree.leaves(reduced):np.testing.assert_array_equal(value,np.full(value.shape,2.5,dtype=np.float32))
         checks.append({'name':'four-device-fp32-gradient-average','passed':True,'device_count':4})
+        probes=[]
+        for _ in range(2):
+            probes.append(replicas.map(lambda model,p,r,rows,key:(id(p),p is r),runtime.actor,runtime.actor,
+                                      [[]]*4,jax.random.split(jax.random.PRNGKey(1),4)))
+        if probes[0]!=probes[1] or not all(same for _,same in probes[0]):raise ValueError('unchanged policy/reference state was needlessly transferred')
+        checks.append({'name':'on-device-policy-reference-reuse','passed':True,'device_count':4,'same_policy_not_recopied':True})
         # Diagnostic mixed probabilities use actual model likelihoods; no invented choice token.
         candidates=[{'id':'a','text':'5','kind':'answer','value':5},{'id':'b','text':'6','kind':'answer','value':6}]
         reference=actor;tx=optimizer(actor,5e-6,5);state=tx.init(actor)
@@ -121,6 +127,21 @@ def validate(folder,output,development=False):
         if retained!=[1] or prompts!=[envs[1].prompt] or envs[1].error is not None or not all(envs[i].error=='context capacity exhausted' for i in (0,2)):
             raise ValueError('context exhaustion contaminated another episode')
         checks.append({'name':'per-episode-context-exhaustion-isolation','passed':True,'retained_episodes':1,'exhausted_episodes':2})
+        # The fixed-mode baseline must not silently use argmax while switching
+        # samples categorical decisions. Diagnostic probabilities isolate routing.
+        from copy import deepcopy
+        from .data_v2 import make
+        diagnostic=deepcopy(make('train','fast',0));diagnostic['visible']['candidates']=[
+            {'id':'a','kind':'answer','text':'1','value':1},{'id':'b','kind':'answer','text':'2','value':2}]
+        sampler=TunixRuntime.__new__(TunixRuntime);sampler.limits=runtime.limits;sampler.mode_ids=runtime.mode_ids
+        sampler.decision_logps=lambda *args:(jnp.log(jnp.array([.75,.25],dtype=jnp.float32)),2)
+        sampler.actor=runtime.actor
+        for policy in ('always_jev','confidence'):
+            results=sampler.rollouts(sampler.actor,[diagnostic]*32,jax.random.PRNGKey(42),'diagnostic',sample=True,policy=policy,threshold=.6)
+            if not any(r['answer']==2 for r in results):raise ValueError(f'{policy} silently used deterministic categorical decoding')
+            if not all(r['trajectory'].events[0]['kind']=='decision' for r in results):raise ValueError('categorical baseline actions missing from trajectory')
+        checks.append({'name':'identical-stochastic-categorical-baseline-decoding','passed':True,'policies':['always_jev','confidence'],
+                       'diagnostic_probabilities':True,'trained_capability_claim':False})
         require_unchanged(root,report);report['passed']=True
     except Exception as exc:report['error']={'type':type(exc).__name__,'message':str(exc)};raise
     finally:

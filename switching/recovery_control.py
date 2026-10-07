@@ -9,6 +9,15 @@ class StageLimit(RuntimeError):
     pass
 
 
+def device_memory_exhausted(error):
+    """Only a device allocation failure may end the increasing batch probe."""
+    module=type(error).__module__
+    message=str(error).lower()
+    return (module.startswith(('jax.', 'jaxlib.')) and
+            'resource_exhausted' in message and
+            any(word in message for word in ('memory', 'allocation', 'allocating')))
+
+
 class StageControl:
     def __init__(self,config,session,folder,publish=None,now=time.time):
         self.config,self.session,self.folder=config,session,Path(folder)

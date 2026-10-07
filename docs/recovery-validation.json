@@ -1,9 +1,9 @@
 {
   "schema_version": 2,
-  "recorded_utc": "2026-10-07T20:36:31.885966+00:00",
-  "status": "local-development-passed-production-gates-pending",
+  "recorded_utc": "2026-10-07T22:06:40.905756+00:00",
+  "status": "local-production-gates-passed-ready-for-tpu-pilot",
   "unit_tests": {
-    "passed": 99,
+    "passed": 100,
     "failed": 0
   },
   "development": {
@@ -172,9 +172,9 @@
   "source_manifest_sha256": "a90e15d96fffa2c8dcc6612c9b4d15d3b73996c53fcacac051b18354d4f41432",
   "dataset_manifest_sha256": "d23ec1e21508eff3ffe2d1a134c99b71cb5342d19743cf503f1c53ef871e15fe",
   "production_gates": {
-    "locked_linux_numerical": "pending",
-    "locked_linux_protocol": "pending",
-    "full_1_7b_probability_parity": "pending",
+    "locked_linux_numerical": "passed-current-12-checks",
+    "locked_linux_protocol": "passed-current-10-checks",
+    "full_1_7b_probability_parity": "passed-current-fixed-tolerance",
     "tpu_pilot": "not-started"
   },
   "recovery_paid_training_started": false,
@@ -183,5 +183,9 @@
   "performance_improvement_established": false,
   "base_weights_sha256_verified": true,
   "full_pytorch_reference_exported": true,
-  "cloud_price_check": "recovery-price-check.json"
+  "cloud_price_check": "recovery-price-check.json",
+  "linux_numerical_report": "recovery-numerical.json",
+  "linux_protocol_report": "recovery-protocol.json",
+  "full_model_parity_report": "recovery-full-model-parity.json",
+  "cloud_preflight_report": "recovery-cloud-preflight.json"
 }

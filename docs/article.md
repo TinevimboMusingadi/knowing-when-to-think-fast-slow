@@ -40,7 +40,7 @@ The task also needed repair. Visible prompts must not prescribe asking or lookin
 
 The recovery dataset has 1,536 corrective SFT episodes, 120 validation episodes and 600 sealed test episodes. Source/context variants stay together, and template families differ across splits. The provenance audit reused 252 verified original public GSM8K training examples and imported no private teacher completions. Paired tasks vary whether useful evidence is present or missing; unnecessary tool requests provide a control. These remain arithmetic and context fixtures, not proof of broad reasoning or open-web competence. Split isolation does not prove absence of pretraining exposure.
 
-At this draft's current checkpoint, 99 reference/control tests pass. Small-model development checks also pass FP32 parity, candidate isolation/order, optimizer reference updates, cache likelihoods, packed masking, four-CPU gradient averaging, BF16 with rematerialization and a distributed supervised diagnostic update. The complete locked Linux environment and full 1.7B parity checks remain pending. The recovery has not rented a TPU or begun new SFT/RL.
+At this draft's current checkpoint, 100 reference/control tests pass. Small-model development checks also pass FP32 parity, candidate isolation/order, optimizer reference updates, cache likelihoods, packed masking, four-CPU gradient averaging, BF16 with rematerialization and a distributed supervised diagnostic update. The complete locked Linux environment now passes 12 numerical and ten protocol checks. Full 1.7B probability parity also passed the fixed 0.001 tolerance. This validates the conversion; it is not an accuracy or performance result. The recovery has not rented a TPU or begun new SFT/RL.
 
 ## Measuring the question honestly
 

@@ -209,7 +209,8 @@ class TunixRuntime:
                 env=envs[i]
                 locked_jev=policy=='initial_mode' and env.modes and env.modes[0]==MODES[0]
                 if policy in {"always_jev","confidence"} or locked_jev:
-                    try:probabilities,cost=self.decision_probs(state,env.state_text(),env.candidates)
+                    state_text=env.state_text();candidates=env.candidates
+                    try:choice_logps,cost=self.decision_logps(state,state_text,candidates);probabilities=jnp.exp(choice_logps)
                     except ValueError as exc:
                         if 'capacity exhausted' not in str(exc):raise
                         env.finish_error(str(exc));continue
@@ -217,8 +218,12 @@ class TunixRuntime:
                     jev_predictions[i].append([dict(c,probability=float(probabilities[j])) for j,c in enumerate(env.candidates)])
                     choices=[j for j,c in enumerate(env.candidates) if c["kind"]=="answer"]
                     best=max(choices,key=lambda j:float(probabilities[j])) if choices else None
-                    selected=int(jnp.argmax(probabilities)) if policy=="always_jev" or locked_jev else best
                     if policy=="always_jev" or locked_jev or (best is not None and float(probabilities[best])>=threshold):
+                        # Fixed-mode and confidence baselines use the same
+                        # categorical decoding as the learned switching policy.
+                        next_key,draw_key=jax.random.split(keys[i]);keys=keys.at[i].set(next_key)
+                        selected=int(jax.random.categorical(draw_key,choice_logps)) if sample else int(jnp.argmax(choice_logps))
+                        traces[i].decision(state_text,candidates,selected,float(choice_logps[selected]))
                         env.step(MODES[0],env.candidates[selected]["id"])
                         continue
             active=[i for i in active if not envs[i].done and not (policy=="always_jev") and
@@ -253,6 +258,7 @@ class TunixRuntime:
                 counters[i]['prefill_tokens']+=carries[i]['last_prefill_tokens'];counters[i]['reused_prefix_tokens']+=carries[i]['reused_prefix_tokens']
                 text=self.tokenizer.decode(completion,skip_special_tokens=False).removesuffix("<|im_end|>").strip()
                 if sampled_mode:traces[i].tokens(prompts[local],completion,logps[local],envs[i].observations())
+                else:traces[i].tokens(prompts[local]+completion[:1],completion[1:],logps[local],envs[i].observations())
                 choice=None
                 if completion and completion[0]==self.mode_ids[0]:
                     candidates=envs[i].candidates;state_text=envs[i].state_text()

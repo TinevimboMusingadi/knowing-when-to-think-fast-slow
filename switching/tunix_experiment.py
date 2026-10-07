@@ -13,7 +13,7 @@ from pathlib import Path
 import jax
 import jax.numpy as jnp
 import numpy as np
-from .recovery_control import StageControl,StageLimit,balanced_schedule
+from .recovery_control import StageControl,StageLimit,balanced_schedule,device_memory_exhausted
 from .experiment_v2 import launch_gates,freeze_evaluation,sha
 from .experiment_v2 import revisions
 from .tunix_load import load_full
@@ -108,12 +108,25 @@ class Experiment:
             self.control.check();cfg={**self.cfg,'microbatch':microbatch};learner=MixedLearner(self.runtime,cfg,'sft',self.folder/f'pilot-microbatch-{microbatch}')
             times=[]
             try:
+                source_actor=learner.actor
                 for iteration in range(3):
                     self.control.check(max(times,default=0));started=time.perf_counter();learner.sft_step(self.train[:32]);times.append(time.perf_counter()-started)
+                changed={'adapters':False,'head':False,'rows':False}
+                for (path,old),new in zip(jax.tree_util.tree_flatten_with_path(source_actor)[0],jax.tree.leaves(learner.actor)):
+                    if bool(jnp.any(old!=new)):
+                        name=jax.tree_util.keystr(path);component='head' if 'head' in name else 'rows' if 'rows' in name else 'adapters'
+                        changed[component]=True
+                if not all(changed.values()):raise RuntimeError(f'full-model diagnostic did not update all custom components: {changed}')
                 memory=memory_report(jax.local_devices())
                 stable=all(r['headroom']>=self.cfg['min_memory_headroom'] for r in memory)
                 settings.append({'microbatch':microbatch,'cold_step_seconds':times[0],'warmed_seconds':times[1:],
-                                 'memory':memory,'accepted':stable})
+                                 'memory':memory,'accepted':stable,'diagnostic_component_updates':changed})
+                self.control.record('pilot-setting',settings[-1]);self.control.sync()
+            except Exception as error:
+                if not device_memory_exhausted(error):raise
+                stable=False
+                settings.append({'microbatch':microbatch,'accepted':False,'failure':'device-memory-exhausted',
+                                 'error_type':type(error).__name__,'message':str(error)})
                 self.control.record('pilot-setting',settings[-1]);self.control.sync()
             finally:learner.close()
             if not stable:break
@@ -273,7 +286,8 @@ class Experiment:
                     for row in variant:rng.shuffle(row['visible']['candidates'])
                     records,_=evaluator.run(f'permutation-{index}',variant,actor);attempts.append({r['id']:r for r in records})
                 stable=sum(len({json.dumps(a[row['id']]['answer'],sort_keys=True) for a in attempts})==1 for row in subset)
-                reports['candidate_permutations']={'count':len(subset),'permutations':3,'answer_stability':stable/len(subset)}
+                reports['candidate_permutations']={'count':len(subset),'permutations':3,'answer_stability':stable/len(subset),
+                    'interpretation':'Answer stability under stochastic decoding; category-index RNG and changed visible order can change samples even for an equivariant head. Numerical head equivariance is checked separately.'}
             else:reports['candidate_permutations']={'status':'skipped','reason':'remaining evaluation allowance'}
         finally:replicas.close()
         # Context counterfactuals are already paired in the primary suite; no extra run.

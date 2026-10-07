@@ -2,11 +2,18 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
-from switching.recovery_control import StageControl,StageLimit,balanced_schedule
+from switching.recovery_control import StageControl,StageLimit,balanced_schedule,device_memory_exhausted
 from switching.recovery_budget import RecoveryBudget
 
 
 class RecoveryControlTests(unittest.TestCase):
+    def test_only_device_oom_can_retain_a_smaller_pilot_batch(self):
+        device_error=type('JaxRuntimeError',(RuntimeError,),{'__module__':'jaxlib._jax'})
+        self.assertTrue(device_memory_exhausted(device_error('RESOURCE_EXHAUSTED: Out of memory allocating buffer')))
+        self.assertFalse(device_memory_exhausted(device_error('INVALID_ARGUMENT: incorrect tensor shape')))
+        self.assertFalse(device_memory_exhausted(RuntimeError('RESOURCE_EXHAUSTED: memory')))
+        self.assertFalse(device_memory_exhausted(FloatingPointError('nonfinite gradient')))
+
     def test_worker_deadline_is_earlier_than_watchdog_and_evaluation_is_reserved(self):
         cfg=json.loads(Path('configs/recovery.json').read_text());clock=[1000.]
         with tempfile.TemporaryDirectory() as folder:
