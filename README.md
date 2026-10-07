@@ -18,6 +18,11 @@ A bounded Qwen3-1.7B TPU restart from SFT with a fresh optimizer completed one
 finite RL update. Its second update timed out; multi-step stability and any
 performance gain remain unproven. The restart TPU was also deleted.
 See [the measured recovery report](docs/rl-restart-report.json).
+On October 7, the user approved a $60 total ceiling and a 90-minute continuation.
+Run `20261007-084201` is active on a preemptible `v5litepod-4`, restoring all four
+step-1 RL checkpoints with optimizer and frozen reference state. The next update
+is in progress; no additional completed update or evaluation gain is confirmed.
+The generated-token limit remains 512. See [continuation controls](docs/rl-continuation.md).
 The initial tasks are verified arithmetic and controlled context fixtures.
 They do not establish general-purpose reasoning or autonomous tool competence.
 
@@ -35,12 +40,12 @@ completion timestamp; this is not an actual billing total. The 60-example
 comparison remains pending.
 The recorded recovery cost bound was $1.76, bringing the cumulative compute
 bound to $44.95 while preserving the $5 storage reserve. No additional paid
-attempt fits that conservative allocation until billing is reconciled or the
-experiment budget is revised.
+attempt fit the original $50 allocation. The new attempt explicitly uses the
+user-approved $60 cap, with an $8.28 allowance and $5 reserved for storage.
 RL progress logs now separate policy scoring, reference scoring, each backward
 pass, and optimizer execution. Completion timings include the existing device
 synchronization where present; these diagnostics have CPU integration coverage
-and have not yet been exercised in another TPU run.
+and are now recording phases on the active continuation TPU.
 Likelihood scoring uses Qwen's selected-position vocabulary projection, bucketed
 at 32/64/128/256/512/1,024/2,048 rows, and converts only scored rows to FP32.
 CPU tests compare probabilities and trainable gradients against the full-logit
