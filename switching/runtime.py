@@ -15,16 +15,22 @@ def synchronize(device):
     elif device.type == "cuda": torch.cuda.synchronize(device)
 
 def token_logps(model, prompt, completion, bucket=2048):
+    if not prompt or not completion:raise ValueError("likelihood scoring requires prompt and completion tokens")
     bucket=next((b for b in (512,1024,2048) if b>=len(prompt)+len(completion)),bucket)
     if len(prompt)+len(completion)>bucket: raise ValueError("rollout exceeds context bucket")
     device=next(model.parameters()).device
     values=prompt+completion
     ids=torch.tensor([values+[model.tokenizer.pad_token_id]*(bucket-len(values))],device=device)
-    mask=torch.arange(bucket,device=device)[None,:]<len(values)
-    logits=model.lm(input_ids=ids,attention_mask=mask,use_cache=False).logits[0].float()
+    mask=torch.tensor([[True]*len(values)+[False]*(bucket-len(values))],device=device)
+    # Qwen supports projecting selected hidden positions. Keep projection widths
+    # bucketed for XLA instead of materializing vocabulary logits for the prompt
+    # and padding. Extra selected rows have no loss and may repeat the last row.
+    projection_width=next(b for b in (32,64,128,256,512,1024,2048) if b>=len(completion))
+    positions=torch.tensor([min(len(prompt)-1+i,bucket-1) for i in range(projection_width)],device=device)
+    logits=model.lm(input_ids=ids,attention_mask=mask,use_cache=False,logits_to_keep=positions).logits[0,:len(completion)].float()
     # Every token, including the mode action, participates in policy likelihood.
     target=torch.tensor(completion,device=device)
-    return logits[len(prompt)-1:len(values)-1].log_softmax(-1).gather(1,target[:,None]).squeeze(1)
+    return logits.log_softmax(-1).gather(1,target[:,None]).squeeze(1)
 
 def rollout_group(model, episodes, max_tokens=512, max_transitions=4, max_lookups=2, sample=True, policy="learned", threshold=0.8):
     device=next(model.parameters()).device

@@ -23,6 +23,28 @@ def tiny_model():
     return SwitchModel(Qwen3ForCausalLM(config),TinyTokenizer(),rank=2,alpha=4)
 
 class TrainingTests(unittest.TestCase):
+    def test_selected_projection_matches_full_logps_and_gradients(self):
+        from switching.runtime import token_logps
+        model=tiny_model().eval()
+        for prompt,completion in (([2,64,3],[4,63]),([2]*490,[3]*20)):
+            values=prompt+completion;ids=torch.tensor([values+[0]*(512-len(values))])
+            mask=torch.arange(512)[None,:]<len(values)
+            model.zero_grad(set_to_none=True)
+            full=model.lm(input_ids=ids,attention_mask=mask,use_cache=False).logits[0].float()
+            expected=full[len(prompt)-1:len(values)-1].log_softmax(-1).gather(1,torch.tensor(completion)[:,None]).squeeze(1)
+            expected.sum().backward()
+            gradients={n:p.grad.clone() for n,p in model.named_parameters() if p.grad is not None}
+            model.zero_grad(set_to_none=True)
+            widths=[]
+            handle=model.lm.get_output_embeddings().register_forward_pre_hook(lambda module,args:widths.append(args[0].shape[1]))
+            try:actual=token_logps(model,prompt,completion)
+            finally:handle.remove()
+            torch.testing.assert_close(actual,expected.detach(),atol=1e-6,rtol=1e-6)
+            actual.sum().backward()
+            self.assertEqual(widths,[32])
+            for n,p in model.named_parameters():
+                if n in gradients:torch.testing.assert_close(p.grad,gradients[n],atol=2e-5,rtol=1e-5)
+
     def test_real_cpu_worker_runs_sft_then_dual_head_rl(self):
         import json
         from switching.train import worker

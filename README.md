@@ -41,6 +41,13 @@ RL progress logs now separate policy scoring, reference scoring, each backward
 pass, and optimizer execution. Completion timings include the existing device
 synchronization where present; these diagnostics have CPU integration coverage
 and have not yet been exercised in another TPU run.
+Likelihood scoring uses Qwen's selected-position vocabulary projection, bucketed
+at 32/64/128/256/512/1,024/2,048 rows, and converts only scored rows to FP32.
+CPU tests compare probabilities and trainable gradients against the full-logit
+implementation, including selections near the padded context boundary. For a
+completion of at most 32 tokens in a 512-token context, the vocabulary projection
+uses 32 rows instead of 512. This is a reduction in projected rows, not a measured
+16-fold training speedup; TPU throughput and compilation still need measurement.
 
 ## Data
 
