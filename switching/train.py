@@ -11,7 +11,7 @@ from pathlib import Path
 import torch
 from .batching import pack,supervised_items
 from .model import SwitchModel
-from .optim import DeviceAdamW
+from .optim import DeviceAdamW,numerical_state_valid
 from .runtime import action_logps,rollout_group,synchronize
 from .storage import Budget,Checkpoints,checksum
 
@@ -137,11 +137,12 @@ def worker(index,args):
     if args.phase=="rl" and not args.resume: raise ValueError("RL requires an SFT checkpoint")
     budget=Budget(root/"budget.json",args.hourly_rate,args.phase,config["budget"],start=args.started,prior_spend=config.get("prior_spend_upper_bound",0),hard_ceiling=config.get("hard_ceiling",50))
     rows=load_rows(args.data); val=load_rows(args.validation)
-    best=float("inf"); start=time.perf_counter();reference=None
+    best=float("inf"); start=time.perf_counter();reference=None;state_valid=True
     def update(loss):
         loss.backward()
         synchronize(device)
     def optimizer_step():
+        nonlocal state_valid
         if xm:ensure_all_gradients(model)
         norm=gradient_norm(model)
         norm_value=float(norm.item());finite=math.isfinite(norm_value)
@@ -152,11 +153,18 @@ def worker(index,args):
         coefficient=(1./(norm+1e-6)).clamp(max=1.)
         for parameter in model.parameters():
             if parameter.requires_grad and parameter.grad is not None:parameter.grad.mul_(coefficient.to(parameter.grad.dtype))
+        state_valid=False
         if xm: xm.optimizer_step(optimizer,barrier=True)
         else: optimizer.step()
+        state_valid=numerical_state_valid(model,optimizer)
+        if xm:state_valid=xm.mesh_reduce("optimizer-state-agreement",state_valid,all)
+        if not state_valid:
+            metric(root/f"rl-numerics-rank{rank}.jsonl",{"event":"optimizer-state-refused","step":progress["step"],"timestamp":time.time()})
+            raise RuntimeError("non-finite optimizer state or parameters; checkpoint publication refused")
         scheduler.step(); optimizer.zero_grad(set_to_none=True); progress["step"]+=1
         return norm_value
     def save(tag):
+        if not state_valid:return
         checkpoints.save(tag,model,optimizer,scheduler,progress,rank,reference=reference)
     def validate():
         model.eval(); losses=[]
@@ -301,9 +309,11 @@ def worker(index,args):
                     new=action_logps(model,sample["trace"])
                     bound=config.get("max_log_ratio",20.)
                     loss=grpo_loss(new,old[j],ref[j],adv[j],config["clip_epsilon"],config["kl_coefficient"],bound,validate=False)/len(samples)
-                    finite=bool((torch.isfinite(new).all()&torch.isfinite(old[j]).all()&torch.isfinite(ref[j]).all()&torch.isfinite(loss)).item())
+                    names=("policy","old_policy","reference","advantage","loss")
+                    flags=torch.stack([torch.isfinite(value).all() for value in (new,old[j],ref[j],adv[j],loss)]).cpu().tolist()
+                    components=dict(zip(names,flags));finite=all(flags)
                     safe=finite if not xm else xm.mesh_reduce("rl-input-agreement",finite,all)
-                    metric(root/f"rl-numerics-rank{rank}.jsonl",{"cursor":cursor,"sample":j,"finite":finite,"ratio_tail_actions":int(((new-old[j]).abs()>bound).sum().item()),"kl_tail_actions":int(((ref[j]-new).abs()>bound).sum().item()),"timestamp":time.time()})
+                    metric(root/f"rl-numerics-rank{rank}.jsonl",{"cursor":cursor,"sample":j,"finite":finite,"finite_components":components,"ratio_tail_actions":int(((new-old[j]).abs()>bound).sum().item()),"kl_tail_actions":int(((ref[j]-new).abs()>bound).sum().item()),"timestamp":time.time()})
                     if not safe:raise RuntimeError("non-finite RL input/loss; backward refused on all replicas")
                     with timed_rl_phase(phase_log,cursor,"backward",sample=j):
                         update(loss)

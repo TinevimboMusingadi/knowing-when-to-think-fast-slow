@@ -42,8 +42,29 @@ class DeviceAdamW(torch.optim.Optimizer):
         requested_warmup=[group["warmup_steps"] for group in self.param_groups]
         requested_base=[group["base_lr"] for group in self.param_groups]
         super().load_state_dict(state_dict)
+        # Optimizer.load_state_dict casts moments to each parameter's dtype.
+        # Restore the original FP32 values directly, avoiding a BF16 round trip.
+        original_ids=[identifier for group in state_dict["param_groups"] for identifier in group["params"]]
+        parameters=[parameter for group in self.param_groups for parameter in group["params"]]
+        for identifier,parameter in zip(original_ids,parameters):
+            original=state_dict["state"].get(identifier,{})
+            for name in ("step","exp_avg","exp_avg_sq"):
+                if name in original:
+                    value=original[name]
+                    self.state[parameter][name]=torch.as_tensor(value,device=parameter.device,dtype=torch.float32).clone()
         for group,warmup,base in zip(self.param_groups,requested_warmup,requested_base):
             group["warmup_steps"]=warmup;group.setdefault("base_lr",base)
         for parameter,state in self.state.items():
             for name in ("step","exp_avg","exp_avg_sq"):
                 if name in state:state[name]=state[name].to(device=parameter.device,dtype=torch.float32)
+
+def numerical_state_valid(model,optimizer):
+    """Check updated weights and moments before publishing a recoverable state."""
+    checks=[torch.isfinite(p).all() for p in model.parameters() if p.requires_grad]
+    for state in optimizer.state.values():
+        for name in ("step","exp_avg","exp_avg_sq"):
+            value=state.get(name)
+            if torch.is_tensor(value):
+                checks.append(torch.isfinite(value).all())
+                if name=="exp_avg_sq":checks.append((value>=0).all())
+    return bool(torch.stack(checks).all().item()) if checks else True

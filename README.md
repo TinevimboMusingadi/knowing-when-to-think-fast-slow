@@ -19,10 +19,13 @@ finite RL update. Its second update timed out; multi-step stability and any
 performance gain remain unproven. The restart TPU was also deleted.
 See [the measured recovery report](docs/rl-restart-report.json).
 On October 7, the user approved a $60 total ceiling and a 90-minute continuation.
-Run `20261007-084201` is active on a preemptible `v5litepod-4`, restoring all four
-step-1 RL checkpoints with optimizer and frozen reference state. The next update
-is in progress; no additional completed update or evaluation gain is confirmed.
-The generated-token limit remains 512. See [continuation controls](docs/rl-continuation.md).
+Run `20261007-084201` completed step 2 after activation checkpointing repaired a
+device memory failure. Step 3 was refused for non-finite inputs. An integrity-checked
+inspection found 18 NaNs in step 2's mode embeddings; that checkpoint is unusable.
+The TPU was deleted. Cumulative compute is conservatively estimated at $53.69,
+or $58.69 including the $5 storage reserve, under the approved $60 cap.
+New configuration removes the fixed 512-token output cutoff; the engine retains
+its 2,048-token context capacity. See [continuation controls](docs/rl-continuation.md).
 The initial tasks are verified arithmetic and controlled context fixtures.
 They do not establish general-purpose reasoning or autonomous tool competence.
 
@@ -45,7 +48,7 @@ user-approved $60 cap, with an $8.28 allowance and $5 reserved for storage.
 RL progress logs now separate policy scoring, reference scoring, each backward
 pass, and optimizer execution. Completion timings include the existing device
 synchronization where present; these diagnostics have CPU integration coverage
-and are now recording phases on the active continuation TPU.
+and recorded phases on the now-deleted continuation TPU.
 Likelihood scoring uses Qwen's selected-position vocabulary projection, bucketed
 at 32/64/128/256/512/1,024/2,048 rows, and converts only scored rows to FP32.
 CPU tests compare probabilities and trainable gradients against the full-logit

@@ -9,7 +9,7 @@ from switching.model import SwitchModel,DecisionHead
 from switching.batching import pack
 from switching.storage import Checkpoints,checksum
 from switching.train import grpo_loss,advantages,memory_headroom,is_memory_exhaustion,project_training_seconds,ensure_all_gradients,gradient_norm
-from switching.optim import DeviceAdamW
+from switching.optim import DeviceAdamW,numerical_state_valid
 from switching.inspect_checkpoint import inspect
 
 class TinyTokenizer:
@@ -121,6 +121,20 @@ class TrainingTests(unittest.TestCase):
         with self.assertRaises(ValueError):memory_headroom({})
         self.assertTrue(is_memory_exhaustion(ValueError("XLA:TPU compile permanent error. Ran out of memory in memory space hbm.")))
         self.assertFalse(is_memory_exhaustion(ValueError("invalid attention mask")))
+
+    def test_optimizer_resume_preserves_fp32_moments_for_bf16_parameters(self):
+        parameter=torch.nn.Parameter(torch.ones(3,dtype=torch.bfloat16))
+        optimizer=DeviceAdamW([parameter]);parameter.grad=torch.tensor([.123,.456,.789],dtype=torch.bfloat16)
+        optimizer.step();saved=optimizer.state_dict()
+        original=saved["state"][0]["exp_avg"].clone()
+        restored=DeviceAdamW([parameter]);restored.load_state_dict(saved)
+        torch.testing.assert_close(restored.state[parameter]["exp_avg"],original,rtol=0,atol=0)
+        self.assertTrue(numerical_state_valid(torch.nn.ParameterList([parameter]),restored))
+        restored.state[parameter]["exp_avg_sq"][0]=-1
+        self.assertFalse(numerical_state_valid(torch.nn.ParameterList([parameter]),restored))
+        restored.state[parameter]["exp_avg_sq"][0]=0
+        with torch.no_grad():parameter[0]=float("nan")
+        self.assertFalse(numerical_state_valid(torch.nn.ParameterList([parameter]),restored))
 
     def test_head_permutation(self):
         torch.manual_seed(1);head=DecisionHead(32).eval();x=torch.randn(2,4,32);order=[2,0,3,1]
