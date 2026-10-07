@@ -16,8 +16,11 @@ def inspect(directory):
     rows=[value.float() for name,value in parameters.items() if name.endswith(".rows")]
     head_ids=[index for index,name in enumerate(parameters) if name.startswith("head.")]
     moments=state["optimizer"]["state"]
+    finite_optimizer=all(bool(torch.isfinite(value).all()) and (name!="exp_avg_sq" or bool((value>=0).all())) for moment in moments.values() for name,value in moment.items() if torch.is_tensor(value))
+    finite_reference=all(bool(torch.isfinite(value).all()) for value in (state.get("reference") or {}).values())
     record={"progress":state["progress"],"checkpoint_sha256":manifest["files"]["state.pt"],"finite_parameters":all(bool(torch.isfinite(p).all()) for p in parameters.values()),"nonzero_lora_B_matrices":sum(bool(torch.count_nonzero(p)) for p in lora),"lora_B_matrices":len(lora),"mode_row_difference":max(float((r-r[:1]).abs().max()) for r in rows),"head_has_nonzero_optimizer_moment":any(bool(torch.count_nonzero(moments[i]["exp_avg"])) for i in head_ids if i in moments)}
     record["parameter_updates_verified"]=record["finite_parameters"] and record["nonzero_lora_B_matrices"]>0 and record["mode_row_difference"]>0 and record["head_has_nonzero_optimizer_moment"]
+    record.update(finite_optimizer=finite_optimizer,finite_reference=finite_reference)
     return record
 
 if __name__=="__main__":

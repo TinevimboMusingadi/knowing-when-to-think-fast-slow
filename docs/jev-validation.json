@@ -3,7 +3,7 @@
   "implementation": "current PyTorch engine",
   "status": "local_checks_passed_tpu_pilot_pending",
   "command": "python -m unittest discover -s tests -q",
-  "tests_run": 65,
+  "tests_run": 66,
   "failures": 0,
   "scope": "CPU regression suite, including a small randomly initialized Qwen3 backbone with LoRA and the actual decision head",
   "checks_passed": [
@@ -45,6 +45,6 @@
     "Reload a completed checkpoint and verify predictions and reference state",
     "Validate recoverable GCS upload and owned-resource teardown"
   ],
-  "paid_launch_authorized": false,
-  "budget_note": "The requested increase from the approved $60 ceiling to $70 is still pending. Local validation does not authorize that increase."
+  "paid_launch_authorized": true,
+  "budget_note": "User approved a $70 cumulative cap on 2026-10-07. Pilot allowance $8.28, with $5 reserved for storage; no automatic hardware upgrade."
 }

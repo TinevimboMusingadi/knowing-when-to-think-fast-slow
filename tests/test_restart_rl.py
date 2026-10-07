@@ -41,6 +41,16 @@ class RestartTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             restart_rl.restart_allowance(float('nan'),8.28,60)
 
+    def test_pilot_is_bounded_and_stops_failed_worker_groups(self):
+        session={"run_id":"test","name":"kws-test","created":123,"pilot_stop_step":3}
+        script=restart_rl.startup(session,"gs://bucket/payload",[f"gs://bucket/rank{i}" for i in range(4)])
+        self.assertIn("--max-steps 3",script)
+        self.assertIn("restore-audit.json",script)
+        self.assertIn("finite_optimizer",script)
+        self.assertIn("setsid timeout",script)
+        self.assertIn('kill -TERM -- "-$TRAIN_PID"',script)
+        self.assertIn("worker-error-*.txt",script)
+
 
 if __name__ == "__main__":
     unittest.main()

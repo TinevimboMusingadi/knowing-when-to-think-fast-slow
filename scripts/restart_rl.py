@@ -39,14 +39,26 @@ def startup(session, uri, checkpoint):
         restore.append(f"python -c 'import json; from switching.storage import Checkpoints; c=Checkpoints(\"runs/{run}/restore-scratch\"); p=c.restore_gcs(\"{source}\",\"{destination}\"); m=json.loads((p/\"manifest.json\").read_text()); assert m[\"progress\"][\"phase\"]==\"{phase}\" and m[\"rank\"]=={rank}; c.close()'")
     restore_commands = "\n".join(restore)
     resume = f'"$RUN/restore/rank{{rank}}" --restore-optimizer' if continuation else '"$RUN/sft"'
-    maximum = "" if continuation else " --max-steps 3"
+    maximum = f" --max-steps {session['pilot_stop_step']}" if session.get("pilot_stop_step") else "" if continuation else " --max-steps 3"
     return setup + f'''python -m pip freeze > "$RUN/requirements-lock.txt"
 {restore_commands}
+python -c 'import json; from pathlib import Path; from switching.inspect_checkpoint import inspect; folders=[Path("runs/{run}/restore/rank"+str(i)) for i in range(4)] if {continuation!r} else [Path("runs/{run}/sft")]; records=[inspect(p) for p in folders]; assert all(r["finite_parameters"] and r["finite_optimizer"] and r["finite_reference"] for r in records), "invalid restored numerical state"; Path("runs/{run}/restore-audit.json").write_text(json.dumps(records,indent=2))'
 SECONDS_LEFT=$(python scripts/stage_limit.py --budget "$RUN/budget.json" --phase rl --rate {cloud.RATE_BOUND} --started {session['created']})
 TRAIN_SECONDS=$((SECONDS_LEFT-120))
 if [ "$TRAIN_SECONDS" -lt 60 ]; then exit 2; fi
 set +e
-timeout --signal=TERM --kill-after=60 "$TRAIN_SECONDS" python -m switching.train --phase rl --resume {resume} --validation data/validation30.jsonl{maximum} --output "$RUN" --hourly-rate {cloud.RATE_BOUND} --started {session['created']} --gcs {prefix}/checkpoints
+setsid timeout --signal=TERM --kill-after=60 "$TRAIN_SECONDS" python -m switching.train --phase rl --resume {resume} --validation data/validation30.jsonl{maximum} --output "$RUN" --hourly-rate {cloud.RATE_BOUND} --started {session['created']} --gcs {prefix}/checkpoints &
+TRAIN_PID=$!
+while kill -0 "$TRAIN_PID" 2>/dev/null; do
+  if compgen -G "$RUN/worker-error-*.txt" >/dev/null; then
+    kill -TERM -- "-$TRAIN_PID" 2>/dev/null || true
+    sleep 15
+    kill -KILL -- "-$TRAIN_PID" 2>/dev/null || true
+    break
+  fi
+  sleep 5
+done
+wait "$TRAIN_PID"
 RESULT=$?
 set -e
 echo "$RESULT" > "$RUN/rl-exit-code.txt"
@@ -60,6 +72,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--launch", action="store_true")
     parser.add_argument("--continue-rl", action="store_true")
+    parser.add_argument("--pilot", action="store_true",help="Stop after two new RL updates and validate each")
     parser.add_argument("--total-cap", type=float, default=50)
     parser.add_argument("--source-run", default="20261006-122830")
     parser.add_argument("--max-dollars", type=float, default=1.8)
@@ -107,9 +120,10 @@ def main():
     if len(set(positions)) > 1:
         raise ValueError("replica checkpoints are not synchronized")
     checkpoint = checkpoints if args.continue_rl else checkpoints[0]
+    pilot_stop=(positions[0][0] if positions else 0)+2 if args.pilot else None
     config.update(prior_spend_upper_bound=prior, hard_ceiling=args.total_cap,
-                  max_rl_steps=300 if args.continue_rl else 3,
-                  rl_validation_limit=8 if args.continue_rl else 6, rl_validation_interval=5)
+                  max_rl_steps=pilot_stop or (300 if args.continue_rl else 3),
+                  rl_validation_limit=4 if args.pilot else 8 if args.continue_rl else 6, rl_validation_interval=1 if args.pilot else 5)
     config["budget"]["rl"] = allowance
     import time
     created = time.time()
@@ -121,6 +135,7 @@ def main():
                    state="prepared", source_checkpoint=checkpoint, fresh_optimizer=not args.continue_rl,
                    hard_ceiling=args.total_cap, storage_reserve=5,
                    allowance=allowance)
+    if args.pilot:session["pilot_stop_step"]=pilot_stop
     folder = root / "runs" / run
     folder.mkdir()
     session_path = folder / "cloud-session.json"
