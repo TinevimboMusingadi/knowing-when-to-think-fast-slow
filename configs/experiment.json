@@ -4,8 +4,12 @@
   "lora_rank": 16,
   "lora_alpha": 32,
   "learning_rate": 0.0002,
-  "rl_learning_rate": 0.000005,
-  "buckets": [512, 1024, 2048],
+  "rl_learning_rate": 5e-06,
+  "buckets": [
+    512,
+    1024,
+    2048
+  ],
   "effective_batch": 32,
   "checkpoint_interval": 50,
   "max_transitions": 4,
@@ -19,6 +23,13 @@
   "project": "serious-unison-452122-i2",
   "bucket": "keeper-file-storage",
   "prefix": "knowing-when-to-switch",
-  "budget": {"pilot": 5, "sft": 20, "rl": 15, "evaluation": 5, "storage": 5},
-  "hard_ceiling": 50
+  "budget": {
+    "pilot": 5,
+    "sft": 20,
+    "rl": 15,
+    "evaluation": 5,
+    "storage": 5
+  },
+  "hard_ceiling": 50,
+  "activation_checkpointing": true
 }

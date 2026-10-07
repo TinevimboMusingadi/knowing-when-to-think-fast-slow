@@ -236,6 +236,32 @@ class TrainingTests(unittest.TestCase):
             with self.assertRaises(ValueError):manager.load(path,model)
             manager.close()
 
+class ActivationCheckpointTests(unittest.TestCase):
+    def test_checkpointed_joint_scoring_matches_values_and_gradients(self):
+        from switching.train import enable_activation_checkpointing
+        from switching.runtime import action_logps
+        model=tiny_model()
+        trace=[{"kind":"tokens","prompt":[2,64,3],"completion":[4,63]},
+               {"kind":"decision","state":"One value","candidates":[{"id":"a","text":"1"},{"id":"b","text":"2"}],"choice":0,"bucket":32}]
+        model.eval();expected=action_logps(model,trace)
+        expected.sum().backward()
+        gradients={n:p.grad.clone() for n,p in model.named_parameters() if p.grad is not None}
+        model.zero_grad(set_to_none=True)
+        enable_activation_checkpointing(model,torch.device("cpu"));model.train()
+        calls=[]
+        base=model.lm.get_base_model()
+        for module in base.modules():
+            if hasattr(module,"_gradient_checkpointing_func"):
+                original=module._gradient_checkpointing_func
+                def recorded(function,*args,_original=original,**kwargs):
+                    calls.append(1);return _original(function,*args,**kwargs)
+                module._gradient_checkpointing_func=recorded
+        actual=action_logps(model,trace);actual.sum().backward()
+        self.assertTrue(calls)
+        torch.testing.assert_close(actual,expected,atol=2e-5,rtol=1e-5)
+        for name,p in model.named_parameters():
+            if name in gradients:torch.testing.assert_close(p.grad,gradients[name],atol=2e-5,rtol=1e-5)
+
 class WorkerFailureTests(unittest.TestCase):
     def test_worker_exception_is_saved_before_parent_wait(self):
         from types import SimpleNamespace

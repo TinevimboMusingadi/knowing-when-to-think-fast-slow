@@ -1,6 +1,7 @@
 """Actual SFT and clipped group-relative policy optimization on CPU or replicated XLA."""
 import argparse
 import contextlib
+import functools
 import json
 import math
 import random
@@ -13,6 +14,19 @@ from .model import SwitchModel
 from .optim import DeviceAdamW
 from .runtime import action_logps,rollout_group,synchronize
 from .storage import Budget,Checkpoints,checksum
+
+def enable_activation_checkpointing(model,device):
+    """Use XLA-aware reentrant rematerialization without stochastic likelihoods."""
+    if any(isinstance(m,torch.nn.Dropout) and m.p for m in model.modules()):
+        raise ValueError("checkpointed policy scoring requires zero dropout")
+    base=model.lm.get_base_model() if hasattr(model.lm,"get_base_model") else model.lm
+    if getattr(base.config,"attention_dropout",0):
+        raise ValueError("checkpointed policy scoring requires zero attention dropout")
+    if device.type=="xla":
+        from torch_xla.utils.checkpoint import checkpoint
+    else:
+        from torch.utils.checkpoint import checkpoint
+    base._set_gradient_checkpointing(enable=True,gradient_checkpointing_func=functools.partial(checkpoint,use_reentrant=True))
 
 def grpo_loss(new,old,reference,advantage,epsilon=.2,beta=.02,max_log_ratio=20.,validate=True):
     """FP32 clipped GRPO with explicitly bounded exponential tails.
@@ -103,6 +117,7 @@ def worker(index,args):
     model=SwitchModel.load(config["model"],config["lora_rank"],config["lora_alpha"],torch.bfloat16 if xm else torch.float32).to(device)
     if xm:
         model.head.to(torch.bfloat16)
+        if config.get("activation_checkpointing",True):enable_activation_checkpointing(model,device)
     optimizer=(DeviceAdamW if xm else torch.optim.AdamW)([p for p in model.parameters() if p.requires_grad],lr=config["rl_learning_rate"] if args.phase=="rl" else config["learning_rate"],**({"warmup_steps":10} if xm else {}))
     scheduler=torch.optim.lr_scheduler.LambdaLR(optimizer,lambda step:min(1,(step+1)/10))
     root=Path(args.output); root.mkdir(parents=True,exist_ok=True)
@@ -278,7 +293,9 @@ def worker(index,args):
                     with model.reference(reference),torch.no_grad():
                         ref=[action_logps(model,s["trace"]).detach() for s in samples]
                         synchronize(device)
-                model.eval()  # Deterministic likelihoods: LoRA/head dropout disabled.
+                # Checkpointed decoder layers recompute only in training mode.
+                # All policy dropout is zero, so likelihoods stay deterministic.
+                model.train() if xm and config.get("activation_checkpointing",True) else model.eval()
                 optimizer.zero_grad(set_to_none=True); total_loss=0
                 for j,sample in enumerate(samples):
                     new=action_logps(model,sample["trace"])
@@ -290,6 +307,9 @@ def worker(index,args):
                     if not safe:raise RuntimeError("non-finite RL input/loss; backward refused on all replicas")
                     with timed_rl_phase(phase_log,cursor,"backward",sample=j):
                         update(loss)
+                    if xm:
+                        memory=xm.get_memory_info(device)
+                        metric(root/f"rl-memory-rank{rank}.jsonl",{"cursor":cursor,"sample":j,"memory":memory,"memory_headroom":memory_headroom(memory),"timestamp":time.time()})
                     total_loss+=float(loss.item())
                 with timed_rl_phase(phase_log,cursor,"optimizer"):
                     update_gradient_norm=optimizer_step()
