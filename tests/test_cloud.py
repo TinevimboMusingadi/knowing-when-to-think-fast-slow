@@ -1,5 +1,7 @@
 import importlib.util
 import unittest
+import tempfile
+import json
 from pathlib import Path
 from unittest.mock import patch
 from scripts.stage_limit import seconds_remaining
@@ -7,6 +9,21 @@ spec=importlib.util.spec_from_file_location("cloud",Path(__file__).parents[1]/"s
 cloud=importlib.util.module_from_spec(spec);spec.loader.exec_module(cloud)
 
 class CloudTests(unittest.TestCase):
+    def test_windows_sdk_bypasses_console_batch_wrapper(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);entry=root/"bin/gcloud.cmd";entry.parent.mkdir();entry.touch()
+            python=root/"platform/bundledpython/python.exe";python.parent.mkdir(parents=True);python.touch()
+            script=root/"lib/gcloud.py";script.parent.mkdir();script.touch()
+            command=cloud.sdk_command(str(entry),["--command","x"*10000])
+            self.assertEqual(command,[str(python.resolve()),"-S",str(script.resolve()),"--command","x"*10000])
+
+    def test_watchdog_reports_teardown_failure_cause(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path=Path(folder)/"session.json";path.write_text(json.dumps({"deadline":0}))
+            with patch.object(cloud,"delete_owned",side_effect=RuntimeError("permission denied")),patch.object(cloud.time,"sleep"),patch("builtins.print") as printed:
+                with self.assertRaisesRegex(RuntimeError,"permission denied"):cloud.watchdog(path)
+                self.assertEqual(printed.call_count,3)
+
     def test_independent_stage_timer_includes_margin_and_global_cap(self):
         self.assertEqual(seconds_remaining({},"rl",10,0,3600,{"rl":15}),1095)
         self.assertEqual(seconds_remaining({"stages":{"sft":49}},"rl",10,0,0,{"rl":15}),313)

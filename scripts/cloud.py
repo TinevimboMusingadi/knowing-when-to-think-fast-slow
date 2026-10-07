@@ -19,10 +19,19 @@ ACCELERATOR="v5litepod-4"
 # never assumed by the budget guard until a verified rate is supplied.
 RATE_BOUND=4.80
 
+def sdk_command(executable,args):
+    # A detached Windows process should not depend on a console batch wrapper.
+    # Calling the installed SDK entry point also avoids cmd.exe's 8 KiB limit.
+    if executable.lower().endswith(".cmd"):
+        sdk=Path(executable).resolve().parent.parent
+        python=sdk/"platform/bundledpython/python.exe";script=sdk/"lib/gcloud.py"
+        if python.is_file() and script.is_file():return [str(python),"-S",str(script),*args]
+    return [executable,*args]
+
 def gcloud(*args,check=True,timeout=120):
     executable=shutil.which("gcloud.cmd") or shutil.which("gcloud")
     if not executable:raise RuntimeError("Google Cloud CLI unavailable")
-    result=subprocess.run([executable,*args],capture_output=True,text=True,timeout=timeout)
+    result=subprocess.run(sdk_command(executable,args),capture_output=True,text=True,timeout=timeout)
     if check and result.returncode:raise RuntimeError(result.stderr.strip())
     return result
 
@@ -45,18 +54,25 @@ def watchdog(path):
     session=json.loads(Path(path).read_text()); misses=0
     while time.time()<session["deadline"]:
         try:resource=describe(session)
-        except (RuntimeError,subprocess.TimeoutExpired):
+        except (RuntimeError,subprocess.TimeoutExpired) as exc:
+            print(json.dumps({"event":"watchdog-inspection-error","error":str(exc)}),flush=True)
             time.sleep(30);continue
         if resource is None:
             misses+=1
             if misses>=3:return
         else:misses=0
         time.sleep(30)
+    last_error=None
     for attempt in range(3):
         try:
-            delete_owned(session);return
-        except (RuntimeError,subprocess.TimeoutExpired):time.sleep(10)
-    raise RuntimeError("watchdog could not verify/delete its owned resource")
+            removed=delete_owned(session)
+            print(json.dumps({"event":"watchdog-teardown-confirmed","deleted":removed}),flush=True)
+            return
+        except (RuntimeError,subprocess.TimeoutExpired) as exc:
+            last_error=str(exc)
+            print(json.dumps({"event":"watchdog-deletion-error","attempt":attempt+1,"error":last_error}),flush=True)
+            time.sleep(10)
+    raise RuntimeError(f"watchdog could not verify/delete its owned resource: {last_error}")
 
 def startup(session,archive_uri):
     prefix=f"gs://{BUCKET}/knowing-when-to-switch/{session['run_id']}"
