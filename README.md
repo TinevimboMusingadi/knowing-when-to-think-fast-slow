@@ -1,169 +1,80 @@
 # Knowing When to Switch
 
-A research prototype for **Qwen3-1.7B**, one shared backbone, a language head,
-and a permutation-equivariant candidate-scoring head. The model learns three
-modes: JEV-style typed decisions, direct answers, and ordinary CoT.
+An exploratory **Qwen3-1.7B** experiment with a complete shared backbone, its original language head, and a typed decision head. Three learned tokens select **JEV**, **direct**, or **ordinary CoT**. Asking and controlled lookup are actions inside those modes.
 
-Emitting the JEV token immediately stops language decoding. The head scores
-candidates against observed conversation context, including earlier reasoning or
-retrieved evidence. No decision JSON body is generated on this fast path.
+## Current evidence
 
-## Status
+Historical SFT completed 438 updates; its best retained checkpoint is step 150. One saved example performs lookup → JEV → a grounded correct answer. One verified RL update changed adapters and mode embeddings. Stable RL and performance gains remain unestablished. The final PyTorch/XLA pilot failed after reduction/optimizer execution and was verified deleted.
 
-SFT completed 438 optimizer updates on a four-chip preemptible TPU. Real GRPO
-reached step 3 and stopped after its gradient guard rejected a non-finite update.
-Only four context-acquisition episodes were evaluated before the comparison
-timed out; that sample does not establish a performance gain. The TPU was deleted.
-A bounded Qwen3-1.7B TPU restart from SFT with a fresh optimizer completed one
-finite RL update. Its second update timed out; multi-step stability and any
-performance gain remain unproven. The restart TPU was also deleted.
-See [the measured recovery report](docs/rl-restart-report.json).
-On October 7, the user approved a $60 total ceiling and a 90-minute continuation.
-Run `20261007-084201` completed step 2 after activation checkpointing repaired a
-device memory failure. Step 3 was refused for non-finite inputs. An integrity-checked
-inspection found 18 NaNs in step 2's mode embeddings; that checkpoint is unusable.
-The TPU was deleted. Cumulative compute is conservatively estimated at $53.69,
-or $58.69 including the $5 storage reserve, under the approved $60 cap.
-New configuration removes the fixed 512-token output cutoff; the engine retains
-its 2,048-token context capacity. See [continuation controls](docs/rl-continuation.md).
-The initial tasks are verified arithmetic and controlled context fixtures.
-They do not establish general-purpose reasoning or autonomous tool competence.
+The recovery implementation uses pinned Tunix/JAX with a custom mixed-action learner, FP32 trainable/optimizer state, versioned records and cost gates. Upstream's text-only GRPO learner does not support our custom head unchanged. **99 reference/control tests pass**. Development diagnostics also passed 12 small-model numerical checks and eight protocol checks, including four CPU devices, a real supervised diagnostic update, BF16/rematerialization and context-exhaustion isolation. These development checks do not satisfy production launch acceptance. Locked Linux and full 1.7B parity remain pending. **No recovery TPU or new RL run has started.** See the [recovery validation status](docs/recovery-validation.json).
 
-### Bounded RL recovery
+See [the postmortem](POSTMORTEM.md), [article draft](docs/article.md), [retained weights](docs/saved-weights.json), and [v2 data manifest](docs/recovery-data-manifest.json). Historical reports retain their original schemas and budgets.
 
-`python scripts/restart_rl.py` prepares an RL-only recovery payload; add
-`--launch` to create a preemptible `v5litepod-4`. It verifies the saved best SFT
-checkpoint, starts a fresh optimizer, retains the repaired numerical checks,
-samples four episodes per prompt, and stops after at most three updates.
-The recovery uses six balanced validation fixtures as a pilot check rather than
-a capability benchmark. Setup counts against its $1.80 allowance, and an
-independent teardown deadline preserves the $50 ceiling and $5 storage reserve.
-Prior compute is conservatively bounded at $43.19 using the audited deletion
-completion timestamp; this is not an actual billing total. The 60-example
-comparison remains pending.
-The recorded recovery cost bound was $1.76, bringing the cumulative compute
-bound to $44.95 while preserving the $5 storage reserve. No additional paid
-attempt fit the original $50 allocation. The new attempt explicitly uses the
-user-approved $60 cap, with an $8.28 allowance and $5 reserved for storage.
-RL progress logs now separate policy scoring, reference scoring, each backward
-pass, and optimizer execution. Completion timings include the existing device
-synchronization where present; these diagnostics have CPU integration coverage
-and recorded phases on the now-deleted continuation TPU.
-Likelihood scoring uses Qwen's selected-position vocabulary projection, bucketed
-at 32/64/128/256/512/1,024/2,048 rows, and converts only scored rows to FP32.
-CPU tests compare probabilities and trainable gradients against the full-logit
-implementation, including selections near the padded context boundary. For a
-completion of at most 32 tokens in a 512-token context, the vocabulary projection
-uses 32 rows instead of 512. This is a reduction in projected rows, not a measured
-16-fold training speedup; TPU throughput and compilation still need measurement.
+## Model and protocol
 
-## Data
+Train rank-16/alpha-32 LoRA on Q/K/V/O, the preserved 128-wide two-layer candidate-attention head, and three tied input/output mode rows. Other weights remain frozen. JEV stops language decoding, encodes independent state/candidate branches with reset positions, and compares them only inside the permutation-equivariant head. Typed actions include answer, defer, ask and lookup. Defer leaves the next mode to the model.
 
-Existing math prompts are matched against the original GSM8K **training** answers
-before reuse. Existing teacher completions are never imported. The public GSM8K
-source is [grade-school-math](https://github.com/openai/grade-school-math), licensed
-under MIT. Retain its license when redistributing derived examples. Held-out
-evaluation uses disjoint procedural expression families rather than GSM8K test.
+Private teacher completions are excluded. Buckets of 512/1,024/2,048 tokens are allocation shapes. **There is no fixed output token allowance.** Generation stops at EOS, task completion or actual context capacity. Episodes permit four transitions, two lookups and eight actions.
 
-```powershell
-python -m switching.data --source 'D:/mode-switch-llms/data/train_phase3_60k.jsonl' --gold-file data/gsm8k_train.jsonl
-python -m unittest discover -s tests -v
+## Preparation and local acceptance
+
+Use isolated Python 3.12 and hash-locked dependencies. The TPU lock requires Linux glibc 2.31+. Tunix revision and Qwen revision are fixed in [the single experiment configuration](configs/recovery.json).
+
+```bash
+python scripts/bootstrap_tunix.py
+uv venv --python 3.12.14 .venv-tunix-linux
+uv pip sync --python .venv-tunix-linux/bin/python --require-hashes requirements-tunix-cpu.lock
+export PYTHONPATH="$PWD/.vendor/tunix:$PWD"
+export XLA_FLAGS=--xla_force_host_platform_device_count=4
 ```
 
-## TPU execution
+The related source repository remains read-only. Data rebuilding needs the existing audited legacy training JSONL and cached original public GSM8K training JSONL. The new splits contain 1,536 corrective SFT, 120 validation and 600 sealed test episodes. Paired source/context variants stay together; template families differ across splits. The manifest records 252 public-gold examples reused and zero private completions imported. Retain the [GSM8K MIT license](https://github.com/openai/grade-school-math/blob/master/LICENSE).
 
-`scripts/cloud.py --launch` uploads an explicit allowlist to a unique GCS prefix,
-creates only a four-chip preemptible v5e, runs a pilot, then SFT and GRPO. It
-installs pinned PyTorch/XLA 2.8 and Qwen-compatible Transformers 4.57.3 on the VM.
-Do not launch until local checks pass. A pilot must retain 15% memory headroom
-and projected SFT cost must fit the stage allowance.
-
-Interrupted SFT can resume from completion-marked GCS checkpoints, with one
-optimizer and random-state snapshot per replica. Recovery checks the archived
-dataset hashes before continuing. After downloading that run's budget record
-to `runs/<run-id>/budget-remote.json`, use
-`python scripts/cloud.py --launch --zone us-west4-a --resume-sft-run <run-id>`.
-Recovery retains the successful microbatch of one and skips a repeated pilot.
-The cost projection uses compilation-free optimizer updates after warmup, a
-25% throughput margin, and an explicit reserve for additional cold graphs.
-Elapsed spending remains checked on every microbatch. Replicas agree on budget
-decisions, and independent process timeouts bound both SFT and RL stages.
-
-Dataset changes require fresh SFT. `--fresh-sft-from-run <run-id>` carries the
-earlier cost ledger and reuses the verified batch size without restoring old
-weights or pretending to resume a different dataset.
-
-New spend is limited to $50: pilot $5, SFT $20, RL $15, evaluation $5, storage $5.
-The guard uses a conservative whole-slice $4.80/hour rate and a 15% margin;
-this is an estimate, not a claim about the live Spot price or actual billing.
-The independent local watchdog and startup trap delete only the uniquely named
-TPU carrying the run's ownership label. Other projects and Kaggle sessions are
-outside this launcher's resource scope.
-
-GCS: `gs://keeper-file-storage/knowing-when-to-switch/<run-id>/`.
-Checkpoints contain trainable parameters, optimizer/scheduler state, random
-state and progress. Uploads use checksums and completion markers written last.
-No GCS object is overwritten, and no credential is included in the payload.
-
-The workflow performs a 24-example SFT evaluation smoke check, then attempts
-paired comparisons on the full 600-example holdout within the evaluation budget.
-Incomplete comparisons are labeled as partial; never describe a smoke check or
-budget-truncated run as a complete benchmark.
-
-## Research comparisons
-
-### Offline recovery and smaller evaluation
-
-The loss now computes in FP32, uses `expm1` for the KL estimator, and bounds
-exponential log-ratio tails at 20. This changes the objective outside that range;
-tail counts are recorded. Non-finite inputs/losses are rejected before backward
-on every replica. Gradient norms are inspected before clipping can alter the
-evidence, and RL saves each completed update. Full public sampled traces are
-retained in run artifacts for diagnosing a future failure.
-
-```powershell
-python scripts/offline_probe.py
-python -m unittest discover -s tests -v
-python -m switching.data --output data/procedural-reproduction
-python -m switching.subsets --data data/procedural-reproduction/test.jsonl --output data/test60.jsonl --per-behavior 10
-python -m switching.subsets --data data/procedural-reproduction/val.jsonl --output data/validation30.jsonl --per-behavior 5
+```bash
+python -m switching.data_v2
+python -m unittest discover -s tests -q
+python -m switching.verified_download --uri gs://keeper-file-storage/knowing-when-to-switch/20261006-122830/checkpoints/step-000150-best-sft-rank0-565877d3 --output runs/recovery-v2/source-sft
+python -m switching.conversion --checkpoint runs/recovery-v2/source-sft --output runs/recovery-v2/converted
+python scripts/export_reference.py --output runs/recovery-v2/tiny-reference
+.venv-tunix-linux/bin/python -m switching.validate_tunix --fixture runs/recovery-v2/tiny-reference --output runs/recovery-v2/local-numerical.json
+.venv-tunix-linux/bin/python -m switching.validate_protocol_v2 --fixture runs/recovery-v2/tiny-reference --output runs/recovery-v2/local-protocol.json
 ```
 
-These holdouts reproduce the original procedural test/validation episodes
-without any private training source. Test selection contains 10 episodes per
-behavior; validation contains five. Selection uses seeded ID hashes, never
-model results. This reproduction's synthetic training split does **not** replace
-the original 4,000 verified reused training prompts.
+Reference exports/conversion use the separate PyTorch environment. Download the pinned Qwen revision, then run sequentially to bound host memory:
 
-With the base weights already cached and a verified local SFT checkpoint:
-
-```powershell
-python -m switching.compare --device cpu --offline --sft checkpoints/best-sft --data data/test60.jsonl --validation data/validation30.jsonl --batch-size 2 --output runs/sft-validation60
+```bash
+python scripts/export_full_reference.py --base /absolute/path/to/pinned-qwen
+.venv-tunix-linux/bin/python -m switching.validate_full --base /absolute/path/to/pinned-qwen
+python -m switching.experiment_v2
 ```
 
-Omit `--rl` for an SFT-only comparison. Add a verified local RL checkpoint to
-include RL switching. `--offline` prohibits Hugging Face downloads. The full
-1.7B model is not cached in the current local workspace, so this 60-episode
-benchmark has **not** been run. See [offline recovery evidence](docs/offline-numerics.json).
-CPU checkpoint loading ignores TPU-only random-state metadata. On TPU, the
-native Qwen baseline now uses fixed-cache decoding and suppresses the three
-added mode tokens. Reports are saved after each completed policy batch and on
-interruption; per-policy applicability and completeness are explicit. Use a fresh
-output directory to preserve existing records. No new paid run is authorized
-by these recovery commands.
+The audit cannot provision a TPU. Reports must match current code, configuration, dataset and installed locked dependencies, and import the complete pinned package. Missing, failed, development-only or stale reports block launch. Full probability tolerance is fixed at maximum absolute difference 0.001.
 
-Evaluate learned SFT and RL switching against static direct, static CoT, static
-JEV, and a validation-selected confidence cascade. Untouched Qwen requires its
-native chat protocol and is a separate baseline, not a randomly initialized
-decision head. Report accuracy, calibration, generated tokens, forward passes,
-cold/warmed latency, and actual cost with failures and confidence intervals.
+## Owned TPU execution
 
-Related work: [AdaptThink](https://arxiv.org/abs/2505.13417),
-[PATS](https://arxiv.org/abs/2505.19250),
-[Qwen3](https://huggingface.co/Qwen/Qwen3-1.7B), and
-[BEV's decision architecture](https://github.com/avbiswas/bev-train).
-This implementation uses independent candidate branches rather than copying
-BEV source. Candidate permutation invariance must be verified numerically.
+```bash
+python -m switching.experiment_v2 --execute
+```
 
-No broad novelty claim is made: test whether adding typed decisions and context
-acquisition improves the accuracy/compute tradeoff in this controlled setup.
+This is the only active paid entry point. Old PyTorch TPU launch/restart paths are disabled. Credentials, bucket access, quota, runtime, current interruptible pricing and ownership are checked first. It requests only interruptible `v5litepod-4` in `us-west4-a`, with no larger hardware, on-demand fallback or model substitution.
+
+The **$120 cumulative cap** includes conservative prior **$62.11**. Remaining allocations are $6 pilot, $8 SFT, $20 RL, $16 evaluation and $7.89 storage/cleanup/contingency. Accounting uses the whole-slice $4.80/hour bound plus 15%, including setup, compilation and verified deletion. These are estimates, not billing totals. Evaluation money is protected. Current interruptible rates must be checked at launch against [Google pricing](https://cloud.google.com/tpu/pricing).
+
+The worker performs pilot → corrective SFT → protocol validation → mixed-action GRPO → sealed comparison → export. VM and independent local watchdogs enforce deadlines. Only resources carrying both this run's ownership label and `kws_schema=v2` may be deleted. Absence must be verified. The separate Kaggle/Gemma project is outside this workflow.
+
+Updates check local gradients, FP32 reduced gradients, clipping, parameters and moments separately. Invalid state terminates the attempt without retries or publication. Orbax bundles include actor/reference, optimizer/scheduler, RNG, cursor and accepted-update count. GCS completion markers come last after checksums succeed. Restore uses the caller's device topology.
+
+## Evaluation and demo
+
+Compare native Qwen thinking/non-thinking, SFT/RL switching, fixed modes and validation-selected confidence switching. Native Qwen uses its supported templates and original vocabulary/head without custom mode annotations. Freeze test IDs, decoding, checkpoint hashes and threshold before outcomes. All applicable policies use the same 120 or 60 balanced paired test episodes; insufficient funds produce an incomplete report.
+
+Retain failures, token/candidate work, synchronized warmed latency, cold first-call overhead, calibration, Wilson intervals and paired source-group bootstrap intervals. JEV calibration is conditional over answer candidates. One training seed is exploratory. Short JEV output is not an assumed speed advantage.
+
+```bash
+python -m switching.demo_v2 --replay docs/demo-record.json
+.venv-tunix-linux/bin/python -m switching.demo_v2 --base /absolute/path/to/pinned-qwen --checkpoint-gcs gs://bucket/owned-run/checkpoints/completed-bundle --episode /absolute/path/to/episode.json
+```
+
+Saved replays and live execution are labeled separately. Demonstrations retain all attempts and show only naturally selected transitions. Missing transitions remain missing results.
+
+Related work: [Think Only When You Need](https://arxiv.org/abs/2505.14631), [AdaptThink](https://arxiv.org/abs/2505.13417), and [the JEV-style Qwen architecture](https://github.com/avbiswas/bev-train). This project tests a shared generative/typed model with within-task transitions; it promises neither novelty nor gains.

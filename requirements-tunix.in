@@ -1,0 +1,11 @@
+# The public source is pinned separately to configs/recovery.json's revision.
+jax==0.10.1
+flax==0.12.8
+optax==0.2.8
+orbax-checkpoint==0.12.7
+qwix==0.1.8
+safetensors>=0.5,<0.8
+transformers>=4.51,<5
+huggingface-hub<1
+jaxtyping
+google-cloud-storage

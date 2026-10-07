@@ -1,0 +1,2 @@
+-r requirements-tunix-source.in
+jax[tpu]==0.10.1

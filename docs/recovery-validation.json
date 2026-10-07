@@ -1,0 +1,187 @@
+{
+  "schema_version": 2,
+  "recorded_utc": "2026-10-07T20:36:31.885966+00:00",
+  "status": "local-development-passed-production-gates-pending",
+  "unit_tests": {
+    "passed": 99,
+    "failed": 0
+  },
+  "development": {
+    "numerical": {
+      "passed": true,
+      "production_acceptance": false,
+      "checks": [
+        {
+          "name": "hidden-state-parity",
+          "passed": true,
+          "detail": {
+            "max_absolute_difference": 4.76837158203125e-07
+          }
+        },
+        {
+          "name": "language-logit-parity",
+          "passed": true,
+          "detail": {
+            "max_absolute_difference": 8.940696716308594e-08
+          }
+        },
+        {
+          "name": "selected-token-log-probability",
+          "passed": true,
+          "detail": {
+            "max_absolute_difference": 4.76837158203125e-07
+          }
+        },
+        {
+          "name": "candidate-probability-parity",
+          "passed": true,
+          "detail": {
+            "max_absolute_difference": 5.960464477539063e-08
+          }
+        },
+        {
+          "name": "candidate-permutation",
+          "passed": true,
+          "detail": {
+            "max_absolute_difference": 1.1920928955078125e-07
+          }
+        },
+        {
+          "name": "candidate-backbone-isolation",
+          "passed": true,
+          "detail": {
+            "max_absolute_difference": 0.0
+          }
+        },
+        {
+          "name": "roundtrip-and-inventory",
+          "passed": true,
+          "detail": {
+            "trainable_tensors": 37,
+            "dtype": "float32"
+          }
+        },
+        {
+          "name": "100-optimizer-updates-against-pytorch",
+          "passed": true,
+          "detail": {
+            "updates": 100,
+            "reference": "PyTorch AdamW, FP32"
+          }
+        },
+        {
+          "name": "mixed-action-loss-and-zero-variance",
+          "passed": true,
+          "detail": {
+            "sampled_tokens": 2,
+            "categorical_actions": 1,
+            "zero_group_advantage": true
+          }
+        },
+        {
+          "name": "all-custom-components-update",
+          "passed": true,
+          "detail": {
+            "adapters": true,
+            "head": true,
+            "rows": true
+          }
+        },
+        {
+          "name": "orbax-restore-next-update",
+          "passed": true,
+          "detail": {
+            "next_update_identical": true,
+            "reference_unchanged": true
+          }
+        },
+        {
+          "name": "nonfinite-update-refused",
+          "passed": true,
+          "detail": {
+            "stage": "local-gradients",
+            "diagnostics_present": true
+          }
+        }
+      ],
+      "report_sha256": "106c79b36ec15bc0cd0af0f0318e9cb1e506f3bb3f648597c82dce7bceeac14a",
+      "seconds": 103.35522794723511
+    },
+    "protocol": {
+      "passed": true,
+      "production_acceptance": false,
+      "checks": [
+        {
+          "name": "cached-and-recomputed-likelihoods",
+          "passed": true,
+          "tokens": 3,
+          "context_capacity": 512
+        },
+        {
+          "name": "cross-action-cache-reuse-and-2048-capacity",
+          "passed": true,
+          "prefill_tokens": 4,
+          "reused_prefix_tokens": 180,
+          "learned_transition_claim": false
+        },
+        {
+          "name": "packed-isolation-reset-positions-assistant-masking",
+          "passed": true,
+          "prompt_labels": 0,
+          "padding_gradients": 0
+        },
+        {
+          "name": "four-device-fp32-gradient-average",
+          "passed": true,
+          "device_count": 4
+        },
+        {
+          "name": "three-mixed-action-diagnostic-updates",
+          "passed": true,
+          "accepted_updates": 3,
+          "sampled_rollout_claim": false,
+          "reference_unchanged": true
+        },
+        {
+          "name": "bf16-frozen-forward-rematerialization-fp32-update",
+          "passed": true
+        },
+        {
+          "name": "actual-four-device-supervised-learner-update",
+          "passed": true,
+          "episodes": 32,
+          "accepted_updates": 1,
+          "diagnostic_tokenizer": true,
+          "trained_capability_claim": false
+        },
+        {
+          "name": "per-episode-context-exhaustion-isolation",
+          "passed": true,
+          "retained_episodes": 1,
+          "exhausted_episodes": 2
+        }
+      ],
+      "report_sha256": "7586792ef3fa2a3912316a600b9d11d60d452fed28b0cb32dd2671528bef7f4a",
+      "seconds": 383.50202210000134
+    }
+  },
+  "development_method": "Windows development dependencies and a model-submodule package stub; complete locked upstream import is not claimed.",
+  "model": "Qwen/Qwen3-1.7B",
+  "tunix_revision": "58caef9cd85fcecf51fdb988c05fbaf4e617359a",
+  "source_checkpoint_step": 150,
+  "source_manifest_sha256": "a90e15d96fffa2c8dcc6612c9b4d15d3b73996c53fcacac051b18354d4f41432",
+  "dataset_manifest_sha256": "d23ec1e21508eff3ffe2d1a134c99b71cb5342d19743cf503f1c53ef871e15fe",
+  "production_gates": {
+    "locked_linux_numerical": "pending",
+    "locked_linux_protocol": "pending",
+    "full_1_7b_probability_parity": "pending",
+    "tpu_pilot": "not-started"
+  },
+  "recovery_paid_training_started": false,
+  "historical_cost_upper_bound_usd": 62.11,
+  "total_cap_usd": 120,
+  "performance_improvement_established": false,
+  "base_weights_sha256_verified": true,
+  "full_pytorch_reference_exported": true,
+  "cloud_price_check": "recovery-price-check.json"
+}

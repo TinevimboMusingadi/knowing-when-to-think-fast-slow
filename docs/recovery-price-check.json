@@ -1,0 +1,16 @@
+{
+  "sku": "services/6F81-5844-456A/skus/462B-8A80-23FF",
+  "description": "TpuV5e attached to Spot Preemptible VMs running in Las Vegas",
+  "per_chip_hour": 0.494237,
+  "effective_time": "2026-10-07T07:00:00Z",
+  "usage_unit": "chip-hour",
+  "unit_multiplier": 4,
+  "whole_slice_rate": 1.976948,
+  "unit_source": "https://cloud.google.com/tpu/pricing",
+  "standard_sku_check": {
+    "sku": "services/6F81-5844-456A/skus/D927-B1F4-0507",
+    "description": "TpuV5e running in Las Vegas",
+    "per_chip_hour": 1.2,
+    "effective_time": "2026-10-07T07:00:00Z"
+  }
+}

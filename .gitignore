@@ -9,3 +9,9 @@ checkpoints/
 _skill_extract/
 cloud-session.json
 *.log
+.tools/
+.venv-tunix/
+.venv-tunix-linux/
+.vendor/
+.python/
+.cache/
