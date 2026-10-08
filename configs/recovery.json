@@ -28,7 +28,7 @@
   "min_memory_headroom": 0.15,
   "hard_ceiling": 120,
   "prior_spend_upper_bound": 62.11,
-  "budget": {"pilot": 6, "sft": 8, "rl": 20, "evaluation": 16, "contingency": 7.89},
+  "budget": {"pilot": 11, "sft": 8, "rl": 20, "evaluation": 16, "contingency": 2.89},
   "rate_upper_bound": 4.8,
   "rate_margin": 1.15,
   "project": "serious-unison-452122-i2",

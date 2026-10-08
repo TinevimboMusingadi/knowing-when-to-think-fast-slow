@@ -1,0 +1,46 @@
+{
+  "schema_version": 2,
+  "status": "authorized-active-20261008",
+  "reason": "the remaining pilot allowance cannot cover the previous measured supervised setting and cleanup, before setup or required sampled GRPO",
+  "hard_ceiling_usd": 120,
+  "prior_bound_plus_recovery_usd": 66.24350473446846,
+  "previous_allocations_usd": {
+    "pilot": 6,
+    "sft": 8,
+    "rl": 20,
+    "evaluation": 16,
+    "contingency": 7.89
+  },
+  "active_allocations_usd": {
+    "pilot": 11,
+    "sft": 8,
+    "rl": 20,
+    "evaluation": 16,
+    "contingency": 2.89
+  },
+  "transfer_usd": 5,
+  "source": "contingency",
+  "destination": "pilot",
+  "pilot_remaining_after_transfer_usd": 6.86649526553154,
+  "maximum_retry_creation_to_verified_deletion_minutes": 74.63581810360371,
+  "cleanup_reserve_minutes": 5,
+  "planning_whole_slice_hourly_usd": 5.52,
+  "scope": "one owned interruptible v5litepod-4 retry, only after current local acceptance passes; no hardware, model, output allowance or tolerance change",
+  "gates": [
+    "fresh locked Linux numerical/protocol/full-model parity reports",
+    "current quota/credential/bucket/price checks",
+    "all four accelerators detected",
+    "100 reference optimizer updates on TPU",
+    "3 complete sampled mixed-action GRPO updates including save/reload",
+    "stage projections before corrective SFT and RL"
+  ],
+  "stopping_rules": [
+    "terminate on numerical failure without retry",
+    "independent deletion deadline",
+    "no use of protected evaluation allowance",
+    "no assumed speedup from local compiler repair"
+  ],
+  "active_config_unchanged": false,
+  "authorization": "User explicitly approved moving $5 from contingency to the pilot on 2026-10-08; cumulative cap and evaluation reserve unchanged.",
+  "experiment_completed": false
+}

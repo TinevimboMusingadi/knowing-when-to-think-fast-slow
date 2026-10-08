@@ -12,11 +12,12 @@ class RecoveryBudgetTests(unittest.TestCase):
             b=RecoveryBudget(self.config,Path(folder)/"ledger.json",now=lambda:1000.)
             self.assertAlmostEqual(b.remaining("rl"),20)
             item=b.begin("pilot","owned")
-            self.assertAlmostEqual(item["deadline"]-1000,6/5.52*3600)
+            allowance=self.config["budget"]["pilot"]
+            self.assertAlmostEqual(item["deadline"]-1000,allowance/5.52*3600)
             with self.assertRaises(RuntimeError):b.begin("rl","other")
             with self.assertRaises(RuntimeError):b.finish("owned",item["deadline"],False)
             b.finish("owned",item["deadline"],True)
-            self.assertAlmostEqual(b.total(),68.11)
+            self.assertAlmostEqual(b.total(),self.config["prior_spend_upper_bound"]+allowance)
             self.assertAlmostEqual(b.remaining("evaluation"),16)
     def test_overallocation_and_bad_checkpoint_are_rejected(self):
         bad={**self.config,"hard_ceiling":70}
