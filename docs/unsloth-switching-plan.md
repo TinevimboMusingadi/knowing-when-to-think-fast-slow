@@ -10,7 +10,7 @@ Historical SFT completed and the best checkpoint at step 150 remains the recover
 
 The recovery TPU pilot passed the small numerical checks and three disposable full-model supervised updates. Larger-batch compilation stalled; its cause is unresolved. A subsequent local full-model check was killed by an established memory exhaustion event. Recovery corrective SFT and sampled full-model GRPO remain incomplete. These failures concern execution and validation; they do not establish that a decision head cannot be trained.
 
-The recorded conservative cumulative spending bound is $66.24 of $120, not a reconciled invoice. The original pilot allowance has only approximately $1.87 left. No expensive retry fits merely because the total budget has room: stages and the evaluation reserve still apply. The earlier proposed redistribution remains unapplied.
+The recorded conservative cumulative spending bound before resumption is $66.24 of $120, not a reconciled invoice. On 8 October the user explicitly approved moving $5 from contingency to the pilot. The active allocations are pilot $11, SFT $8, RL $20, evaluation $16, and contingency $2.89. The pilot has approximately $6.87 remaining; the cumulative ceiling and evaluation reserve remain unchanged. Stages and measured cost projections still apply.
 
 ## What Unsloth actually provides
 
@@ -41,6 +41,14 @@ There is no positive reward for using CoT, selecting JEV, or changing modes. Cor
 Today's [reward audit](reward-audit-20261008.json) passed 14 scripted counterexample checks. Eight existing environment/trajectory tests also passed. The audit checks correctness, unsupported guesses, irrelevant and repeated acquisition, available-context controls, invalid execution, mode neutrality, transition cost, candidate computation, bounded penalties, and oracle separation. It contains **no sampled model results**.
 
 One shaping detail is explicit: acquiring just one of several required fields still earns +0.05, even if the eventual answer is wrong or unfinished. Full correctness still requires all fields. We preserve this historical behavior and record it; any future tightening must receive a new reward revision and be evaluated on the same counterexamples. The audit does not prove sufficient reward variation or training stability.
+
+## What the earlier mode-switch repository already implements
+
+A read-only inspection of the existing repository found token-based mode switching, a causal-LM LoRA SFT path, typed choice/noul/score schemas, a trajectory parser, deterministic rewards, transition statistics, and group-relative advantages. Eight existing RL-environment tests passed on 8 October. These are reusable foundations; a new learned reward model is not the missing component.
+
+The inspected `src/rl/grpo_trainer.py` exposes `evaluate_group` and `train_step_mock`. The latter scores constructed completions and returns metrics; it does not generate policy samples, calculate differentiable policy likelihoods, or update weights. Likewise, `src/training/pipelined_trainer.py::_simulate_or_run_grpo` scores fixed examples and prints a completion message without an optimizer update. That message must not be treated as completed policy training. The local code does not establish what may have run elsewhere.
+
+Its `JevEvaluator` scores candidate token IDs using the language model's final-position logits. It does not contain this project's isolated-candidate attention head. The current Tunix engine already implements the additional mixed-event probability path: generated tokens and real categorical head choices both enter its GRPO loss and gradient update. The remaining gap is stable full-model sampled execution and acceptance on the selected TPU, not inventing mode switching or a reward scorer. Private formats and teacher traces remain excluded from this public experiment.
 
 ## Recommended training sequence
 

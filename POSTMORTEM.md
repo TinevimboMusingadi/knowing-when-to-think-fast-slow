@@ -1,6 +1,6 @@
 # Knowing When to Switch: end-of-run postmortem
 
-October 7, 2026. This postmortem preserves the stopped PyTorch/XLA attempt. Its TPU was verified deleted. The later authorized Tunix recovery is recorded separately below; no recovery TPU has launched yet.
+Updated October 8, 2026. This postmortem preserves the stopped PyTorch/XLA attempt. Its TPU was verified deleted. The later authorized Tunix recovery, including its first paid pilot, is recorded separately below.
 
 We built a working supervised prototype and saved a real context-acquisition demonstration. We did not finish stable reinforcement learning or establish an accuracy or efficiency improvement. That distinction is the main result of this attempt.
 
@@ -89,7 +89,7 @@ The subsequently authorized recovery preserves those acceptance requirements: nu
 
 ## Recovery implementation addendum
 
-The user authorized a $120 cumulative ceiling, including a conservative $62.11 prior estimate. The new allocations are $6 pilot, $8 corrective SFT, $20 RL, $16 evaluation and $7.89 storage/cleanup/contingency. Billing remains unreconciled. No new TPU compute has been incurred by the recovery work so far.
+The user authorized a $120 cumulative ceiling, including a conservative $62.11 prior estimate. The new allocations are $6 pilot, $8 corrective SFT, $20 RL, $16 evaluation and $7.89 storage/cleanup/contingency. Billing remains unreconciled. The first recovery attempt used a conservative $4.13, taking the cumulative bound to $66.24 and leaving $1.87 of the pilot allocation. Evaluation funds remain reserved.
 
 The best-SFT step-150 source has been downloaded and all eight files verified. Its portable conversion retains 224 adapter tensors, the complete existing head, and tied mode rows with IDs 151669/151670/151671. Conversion does not by itself establish model parity or authorize a launch.
 
@@ -97,9 +97,31 @@ The data repair produced 1,536 corrective training episodes, 120 validation epis
 
 The code now includes a pinned Tunix Qwen wrapper, the preserved JEV head, FP32 mixed-action GRPO, explicit reduction/update checks, Orbax/GCS recovery, a gated experiment worker, native baselines, sealed comparisons and labeled replay/live demos. The old paid PyTorch paths are disabled. These implementation statements do not mean every production path has passed execution tests.
 
-The current reference/control suite passes 100 tests. Separate development checks passed 12 small-model numerical checks, including a 100-update PyTorch/Optax comparison and deterministic checkpoint continuation. Eight protocol checks cover cache likelihood equality/reuse, packed isolation/masking, four-CPU gradient averaging, three mixed-action diagnostic updates, BF16 with rematerialization, an actual distributed supervised update and per-episode context exhaustion. The diagnostic actions are not learned rollouts or an RL capability result. Complete hash-locked Linux acceptance now passes 12 numerical and ten protocol checks, including the sampling and on-device state-reuse repairs. Full 1.7B probability parity passed the unchanged 0.001 tolerance (maximum language difference 0.00003952; candidate difference 0.000000477). The paid TPU pilot and all new training/evaluation outcomes remain pending. The [recovery validation status](docs/recovery-validation.json) records these boundaries.
+The reference/control suite now passes 103 tests. Separate development checks passed 12 small-model numerical checks, including a 100-update PyTorch/Optax comparison and deterministic checkpoint continuation. Eight protocol checks cover cache likelihood equality/reuse, packed isolation/masking, four-CPU gradient averaging, three mixed-action diagnostic updates, BF16 with rematerialization, an actual distributed supervised update and per-episode context exhaustion. The diagnostic actions are not learned rollouts or an RL capability result. The first complete hash-locked Linux acceptance passed 12 numerical and ten protocol checks, including sampling and on-device state reuse. Full 1.7B probability parity passed the unchanged 0.001 tolerance (maximum language difference 0.00003952; candidate difference 0.000000477). On October 8, changed compiler/dispatch code passed fresh locked acceptance: 13 numerical checks, ten protocol checks and full-model probability parity. The [recovery validation status](docs/recovery-validation.json) records these boundaries.
 
 Local preparation encountered slow public dependency/base-weight downloads; verified local caches resolved that bottleneck. Base weights are accepted only against the pinned Hugging Face revision's SHA-256 values, even when using a public alternate transport. Missing, failed, development-only or stale acceptance reports refuse paid launch. No model-size, tolerance or budget change is used to bypass those gates.
+
+### First Tunix TPU pilot: finite updates, incomplete compilation
+
+Run `20261007-220801` restored SFT step 150 on the approved interruptible four-chip slice. Its actual TPU numerical suite passed all 12 checks in 36.0 seconds, including 100 small-model optimizer updates against PyTorch and checkpoint continuation. [The preserved numerical report](docs/recovery-tpu-numerical.json) was downloaded and uploaded with a verified checksum before the later stall.
+
+At supervised microbatch 1, three disposable full-model updates completed. Adapters, the JEV head and mode rows all changed. The first step took 814.5 seconds; warmed steps took 81.6 and 83.2 seconds. Minimum measured device-memory headroom was 39.8%. The repeated diagnostic training batch's final loss was 0.6521. This is an execution and update check, not corrective SFT, a selected checkpoint or held-out improvement.
+
+[The diagnostic figure](docs/figures/recovery-pilot.png) can be regenerated from the preserved partial record with `python docs/render-pilot-figure.py` in an environment containing Matplotlib. It distinguishes the cold step from warmed execution and makes no held-out performance claim.
+
+Compilation at microbatch 2 became unresponsive to repeated remote health checks. Before access failed, the observed process RSS had grown to roughly 145 GiB on a host with roughly 189 GiB of RAM. That supports investigating compiler workload and host-memory pressure. It does not prove an OOM, a hardware fault or a non-finite update. The operator deleted only this owned TPU; absence was verified. The complete guest logs and final artifact export could not be recovered. The [partial pilot record](docs/recovery-pilot-report.json) explicitly identifies the full-model numbers as live operator observations rather than a completed guest report.
+
+Code inspection found that candidate encoding expanded a complete backbone computation for each candidate. The repair uses a bounded, rematerialized loop and compiles gradient accumulation and optimizer-state checks together, preserving separate numerical acceptance boundaries. Its new small-model candidate-gradient comparison passes the original fixed tolerance. Distributed protocol and full-model probability checks must pass again before the changed code can launch. No real full-model mixed-action GRPO update completed in this recovery attempt.
+
+The cloud connection gate also needed repair: a Windows SSH wrapper could return success after abandoning a host-key prompt. Launch now requires an exact response to a fresh remote nonce, pins the public host key for the owned endpoint, and rechecks ownership after connecting. It does not modify global SSH settings. Three control tests cover the false-success path and verification helpers. This fixes a misleading connection status; it does not explain the later compiler stall.
+
+The previous measured cold step, two warmed steps and five minutes of cleanup alone reserve $1.96 at the conservative hourly bound, excluding setup and the required mixed-action pilot. That exceeded the $1.87 then left in the pilot allocation. On October 8, the user approved moving $5 from contingency to the pilot, leaving $6.87 for another attempt. The total cap remains $120, with the $16 evaluation reserve intact. A retry still requires fresh acceptance and measured cost projections; faster TPU compilation is not assumed.
+
+### Local reference recovery on October 8
+
+Two owned local containers exhausted their six-GiB memory allowance. Instrumentation located the second failure during full-backbone loading, before any probability comparison or RL update. A subsequent run copied the same verified base shards to Linux-local storage and permitted swap within the owned container. Full FP32 language and JEV probability parity then passed in 306.5 seconds, with maximum absolute differences of 0.00003952 and 0.000000477 respectively. The tolerance remains 0.001. Storage placement and swap changed together, so this result does not isolate the source of the earlier loading peak.
+
+The reference harness records execution stages, disables asynchronous CPU dispatch and releases language-forward intermediates before candidate comparison. It interprets the candidate scan body for this memory-limited full-model reference. Compiled candidate forward/gradient behavior is checked separately on the small model and remains subject to the TPU pilot. This local pass establishes conversion parity; it is not training or a throughput result.
 
 ## Evidence used for this postmortem
 

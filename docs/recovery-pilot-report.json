@@ -1,0 +1,117 @@
+{
+  "schema_version": 2,
+  "run_id": "20261007-220801",
+  "implementation_commit": "c5799d1",
+  "status": "incomplete-owned-resource-deleted",
+  "stage": "pilot",
+  "model": "Qwen/Qwen3-1.7B",
+  "tunix_revision": "58caef9cd85fcecf51fdb988c05fbaf4e617359a",
+  "source_sft_step": 150,
+  "gcs_prefix": "gs://keeper-file-storage/knowing-when-to-switch/recovery-v2/20261007-220801",
+  "evidence_provenance": {
+    "tpu_numerical": "downloaded VM report, checksum-verified GCS proof",
+    "supervised_setting": "operator observations from live owned-VM operations.jsonl and metrics.jsonl; complete guest logs were not exported before remote access failed",
+    "failure": "repeated SSH health-command timeouts and operator stop record",
+    "cleanup": "completed local session and finalized budget ledger; later cloud describe returned NOT_FOUND"
+  },
+  "tpu_numerical": {
+    "passed": true,
+    "checks": 12,
+    "seconds": 36.032225608825684,
+    "report": "recovery-tpu-numerical.json",
+    "sha256": "292eaf9d3a98cc87188ef417fdfb86e4334e78f77dd550fb3a778bcc21a7638b"
+  },
+  "supervised_setting": {
+    "microbatch": 1,
+    "accepted_updates": 3,
+    "cold_step_seconds": 814.4634148139999,
+    "warmed_seconds": [
+      81.60124262499994,
+      83.17175375500005
+    ],
+    "minimum_measured_memory_headroom": 0.3976510780401068,
+    "diagnostic_component_updates": {
+      "adapters": true,
+      "head": true,
+      "rows": true
+    },
+    "last_batch_loss": 0.6520674186576798,
+    "useful_input_tokens": 19605,
+    "allocated_input_tokens": 22528,
+    "candidate_encoding_tokens": 9385,
+    "last_useful_input_tokens_per_second": 235.71704472831803,
+    "measured_peak_memory": [
+      {
+        "device": 0,
+        "peak_bytes": 9848569856,
+        "limit_bytes": 16909334528,
+        "headroom": 0.4175660881454648
+      },
+      {
+        "device": 1,
+        "peak_bytes": 8594058240,
+        "limit_bytes": 16909334528,
+        "headroom": 0.4917565664237594
+      },
+      {
+        "device": 2,
+        "peak_bytes": 10185319424,
+        "limit_bytes": 16909334528,
+        "headroom": 0.3976510780401068
+      },
+      {
+        "device": 3,
+        "peak_bytes": 8594058240,
+        "limit_bytes": 16909334528,
+        "headroom": 0.4917565664237594
+      }
+    ],
+    "interpretation": "repeated diagnostic training batch; no held-out accuracy or selected policy result"
+  },
+  "failure": {
+    "phase": "microbatch-2-compilation",
+    "exact_cause_established": false,
+    "numeric_failure_established": false,
+    "last_observed_host_rss_kib": 152254152,
+    "host_memory_total_kib": 197825980,
+    "last_observed_memory_available_kib": 42010468,
+    "compile_cache_files": 43,
+    "plausible_explanations": [
+      "large compilation workload",
+      "host memory pressure"
+    ],
+    "not_established": [
+      "host OOM",
+      "hardware fault",
+      "nonfinite optimizer update"
+    ]
+  },
+  "outcomes": {
+    "corrective_sft_started": false,
+    "full_model_mixed_grpo_updates": 0,
+    "new_selected_checkpoint": false,
+    "performance_improvement_established": false
+  },
+  "cleanup": {
+    "absence_verified": true,
+    "deleted_utc": "2026-10-07T22:53:42.168551+00:00",
+    "other_project_resources_touched": false
+  },
+  "cost": {
+    "creation_to_verified_deletion_seconds": 2695.763957262039,
+    "planning_whole_slice_hourly_usd": 5.52,
+    "attempt_upper_bound_usd": 4.13350473446846,
+    "cumulative_upper_bound_usd": 66.24350473446846,
+    "remaining_pilot_usd": 1.8664952655315403,
+    "published_spot_whole_slice_hourly_usd": 1.976948,
+    "actual_billing_usd": null,
+    "total_cap_usd": 120
+  },
+  "continuation_projection": {
+    "method": "previous measured cold step + p90 of two warm steps + 300 seconds cleanup; excludes setup and actual GRPO",
+    "previous_one_setting_lower_work_seconds": 1280.806922324,
+    "previous_one_setting_cost_upper_bound_usd": 1.9639039475634663,
+    "fits_remaining_pilot": false,
+    "optimized_backend_tpu_timings_measured": false
+  }
+}
