@@ -256,6 +256,48 @@ def resolve_interruptible_price(skus,config):
             'unit_source':'https://cloud.google.com/tpu/pricing','standard_sku_check':standard[0]}
 
 
+def upload_owned_file(session,path,key,client=None,timeout=1800):
+    """Create a checked run object without a CLI process pool or overwrites."""
+    from google.api_core.exceptions import NotFound
+    from google.cloud import storage
+    from google.cloud.storage.retry import DEFAULT_RETRY
+    import google_crc32c
+    if not key or key.startswith('/') or '..' in key.split('/'):
+        raise ValueError('object key must stay inside the owned run prefix')
+    path=Path(path);digest=hashlib.sha256();crc=google_crc32c.Checksum()
+    with path.open('rb') as stream:
+        for chunk in iter(lambda:stream.read(1024*1024),b''):
+            digest.update(chunk);crc.update(chunk)
+    expected_sha=digest.hexdigest();expected_crc=base64.b64encode(crc.digest()).decode()
+    bucket,prefix=session['gcs_prefix'].removeprefix('gs://').split('/',1)
+    if client is None:
+        import google.auth
+        credentials,_=google.auth.default(scopes=['https://www.googleapis.com/auth/cloud-platform'],
+                                           quota_project_id=session['project'])
+        client=storage.Client(project=session['project'],credentials=credentials)
+    blob=client.bucket(bucket).blob(prefix+'/'+key,chunk_size=256*1024)
+    started=time.monotonic();request=client._http.request
+    def bounded_request(*args,**kwargs):
+        remaining=timeout-(time.monotonic()-started)
+        if remaining<=0:raise RuntimeError('owned file transfer deadline reached')
+        kwargs['timeout']=(min(10,remaining),min(90,remaining))
+        return request(*args,**kwargs)
+    client._http.request=bounded_request
+    try:
+        try:blob.reload(timeout=30,retry=DEFAULT_RETRY.with_deadline(30))
+        except NotFound:
+            blob.metadata={'sha256':expected_sha}
+            blob.upload_from_filename(str(path),if_generation_match=0,checksum='crc32c',timeout=(10,90),
+                                      retry=DEFAULT_RETRY.with_deadline(90))
+            blob.reload(timeout=30,retry=DEFAULT_RETRY.with_deadline(30))
+        if (blob.size!=path.stat().st_size or blob.crc32c!=expected_crc or
+                (blob.metadata or {}).get('sha256')!=expected_sha):
+            raise RuntimeError('owned file size/checksum mismatch; existing objects are not overwritten')
+        return {'uri':session['gcs_prefix']+'/'+key,'bytes':blob.size,'sha256':expected_sha,
+                'crc32c':expected_crc,'verified':True,'seconds':time.monotonic()-started,'chunk_bytes':256*1024}
+    finally:client._http.request=request
+
+
 def startup(session,uri,config):
     seconds=max(1,int(session["deadline"]-time.time()));run=session["run_id"]
     return f'''#!/bin/bash
@@ -288,6 +330,10 @@ for attempt in $(seq 1 60); do
   sleep 5
 done
 if [ "$CONNECTED" != "1" ]; then echo "Remote-access gate not verified"; exit 1; fi
+# The archive was prepared before provisioning. Read the finalized cost clock
+# and session only after the owner has verified the remote connection.
+gcloud storage cp {session['gcs_prefix']}/session.json session.json
+gcloud storage cp {session['gcs_prefix']}/budget.json runs/recovery-v2/budget.json
 timeout --signal=TERM --kill-after=120 {max(1,seconds-300)} .venv/bin/python -m switching.tunix_experiment --session session.json
 gcloud storage cp -r runs/recovery-v2 {session['gcs_prefix']}/artifacts/
 '''
@@ -309,20 +355,29 @@ def execute(config,out,data):
     if not launch_gates(root,config,data,out)["passed"]:raise RuntimeError("local gate changed before launch")
     run=datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d-%H%M%S")
     check=preflight(config,run);(out/"cloud-preflight.json").write_text(json.dumps(check,indent=2))
-    budget=RecoveryBudget(config,out/"budget.json");attempt=budget.begin("pilot",run)
+    budget=RecoveryBudget(config,out/"budget.json");attempt=None
     session={"run_id":run,"name":f"kws-recovery-{run}","project":config["project"],"zone":config["zone"],
-             "deadline":time.time()+sum(budget.remaining(s) for s in ("pilot","sft","rl","evaluation"))/(config["rate_upper_bound"]*config["rate_margin"])*3600,
-             "created":attempt["created_at"],"stage_deadline":attempt["deadline"],"state":"prepared","config_path":str(root/"configs/recovery.json"),"ledger_path":str(out/"budget.json"),
+             "state":"preparing-transfer","cost_clock_started":False,"provision_requested":False,
+             "config_path":str(root/"configs/recovery.json"),"ledger_path":str(out/"budget.json"),
              "gcs_prefix":f"gs://{config['bucket']}/{config['prefix']}/{run}","price_check":check["price"]}
     path=out/"session.json";path.write_text(json.dumps(session,indent=2));archive=out/"payload.tar.gz"
     try:
-        payload(root,archive,out,data,session);uri=session["gcs_prefix"]+"/payload.tar.gz"
+        payload(root,archive,out,data,session)
+        transfer=upload_owned_file(session,archive,'payload.tar.gz')
+        (out/'payload-transfer.json').write_text(json.dumps(transfer,indent=2));uri=transfer['uri']
+        attempt=budget.begin('pilot',run)
+        session.update(created=attempt['created_at'],stage_deadline=attempt['deadline'],state='prepared',cost_clock_started=True,
+                       deadline=time.time()+sum(budget.remaining(s) for s in ('pilot','sft','rl','evaluation'))/
+                                (config['rate_upper_bound']*config['rate_margin'])*3600)
+        path.write_text(json.dumps(session,indent=2))
+        upload_owned_file(session,path,'session.json',timeout=120)
+        upload_owned_file(session,out/'budget.json','budget.json',timeout=120)
         script=out/"startup-v2.sh";script.write_text(startup(session,uri,config),encoding="utf-8",newline="\n")
-        gcloud("storage","cp",str(archive),uri,timeout=600)
         options={"stdout":open(out/"watchdog-v2.log","a"),"stderr":subprocess.STDOUT,"stdin":subprocess.DEVNULL}
         if os.name=="nt":options["creationflags"]=subprocess.CREATE_NO_WINDOW
         try:subprocess.Popen([sys.executable,str(root/"scripts/recovery_cloud.py"),"--watchdog",str(path)],**options)
         finally:options["stdout"].close()
+        session['provision_requested']=True;path.write_text(json.dumps(session,indent=2))
         gcloud("compute","tpus","tpu-vm","create",session["name"],"--project",session["project"],"--zone",session["zone"],
                "--accelerator-type",config["accelerator"],"--version",config["runtime_version"],"--preemptible",
                "--labels",f"kws_run={run},kws_schema=v2","--scopes","https://www.googleapis.com/auth/cloud-platform",
@@ -342,15 +397,25 @@ def execute(config,out,data):
             'message':str(error),'recorded_at':time.time()},indent=2))
         raise
     finally:
-        deleted=delete_and_verify(session);budget=RecoveryBudget(config,out/"budget.json")
-        remote=gcloud("storage","cp",session["gcs_prefix"]+"/budget.json",str(out/"budget-remote-v2.json"),check=False)
-        if remote.returncode==0:
-            updated=json.loads((out/"budget-remote-v2.json").read_text())
-            if updated["prior_upper_bound"]!=config["prior_spend_upper_bound"]:raise ValueError("worker ledger mismatch")
-            budget.ledger=updated
-        budget.finish(run,deleted,True);session.update(state="deleted",absence_verified=True,deleted_at=deleted);path.write_text(json.dumps(session,indent=2))
-        gcloud("storage","cp",str(out/"budget.json"),session["gcs_prefix"]+"/budget-final.json",check=False)
-        gcloud("storage","cp","--recursive",session["gcs_prefix"]+"/artifacts/recovery-v2",str(out/"remote-artifacts"),check=False,timeout=600)
+        if attempt is None:
+            if describe(session) is not None:raise RuntimeError('unexpected resource exists before provisioning')
+            session.update(state='failed-before-provisioning',absence_verified=True,absence_checked_at=time.time())
+            path.write_text(json.dumps(session,indent=2))
+        else:
+            finish_attempt(session,config,out,path)
+
+
+def finish_attempt(session,config,out,path):
+    run=session['run_id']
+    deleted=delete_and_verify(session);budget=RecoveryBudget(config,out/"budget.json")
+    remote=gcloud("storage","cp",session["gcs_prefix"]+"/budget.json",str(out/"budget-remote-v2.json"),check=False)
+    if remote.returncode==0:
+        updated=json.loads((out/"budget-remote-v2.json").read_text())
+        if updated["prior_upper_bound"]!=config["prior_spend_upper_bound"]:raise ValueError("worker ledger mismatch")
+        budget.ledger=updated
+    budget.finish(run,deleted,True);session.update(state="deleted",absence_verified=True,deleted_at=deleted);path.write_text(json.dumps(session,indent=2))
+    gcloud("storage","cp",str(out/"budget.json"),session["gcs_prefix"]+"/budget-final.json",check=False)
+    gcloud("storage","cp","--recursive",session["gcs_prefix"]+"/artifacts/recovery-v2",str(out/"remote-artifacts"),check=False,timeout=600)
 
 
 if __name__=="__main__":

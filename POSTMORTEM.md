@@ -137,6 +137,10 @@ The pilot now checks microbatch 1 and three complete sampled mixed-action update
 
 ## Evidence used for this postmortem
 
+The next launch failed while uploading its 35 MB payload, before any TPU provisioning command. API and CLI checks confirmed the resource absent. The CLI's orphan workers held subprocess pipes after the 600-second timeout; terminating only the verified upload descendants allowed cleanup to finish. Sequential CLI execution and API transfers with larger request bodies also timed out. Windows and Linux both reported socket write timeouts, so the underlying network slowdown remains unexplained.
+
+A 256 KiB resumable transfer completed in 619.6 seconds with transport checksum verification. The production uploader independently verified the completed file's CRC32C and successfully created a new small file. It now rejects existing objects with mismatched checksums and never overwrites them. Payload transfer finishes before the accelerator cost clock starts; the worker reloads the finalized session and ledger after the remote-access gate. Twenty-one targeted controls pass, and the full Windows suite passes 116 tests with one backend-dependent skip. Fresh locked acceptance passed six transfer/orchestration tests, full-model parity, 13 numerical checks and ten protocol checks. The [sanitized upload record](docs/recovery-upload-attempt-20261008.json) distinguishes this transport failure from model training. The conservative ledger retains the failed pre-provisioning setup charge, bringing its bound to $70.38; this is not an actual bill. No new model training began. The remaining pilot allowance is insufficient for the complete required checks, and paid execution awaits the allocation decision.
+
 - [SFT lookup demonstration](docs/demo-record.json): sanitized actions and the actual saved answer.
 - [Saved-weight inventory](docs/saved-weights.json): retained checkpoint locations and the invalid checkpoint warning.
 - [Finite step-1 RL report](docs/rl-restart-report.json): checksum-verified parameter-change evidence.

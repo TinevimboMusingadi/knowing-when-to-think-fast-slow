@@ -1,0 +1,40 @@
+{
+  "schema_version": 2,
+  "recorded_date": "2026-10-08",
+  "status": "failed-before-provisioning-resource-absence-verified",
+  "payload_bytes": 35230297,
+  "failure": {
+    "stage": "local-payload-upload",
+    "type": "TimeoutExpired",
+    "cli_deadline_seconds": 600,
+    "orphan_upload_workers_found": true,
+    "only_verified_owned_workers_terminated": true,
+    "root_cause_of_network_slowdown_established": false
+  },
+  "provision_command_reached": false,
+  "training_started": false,
+  "accepted_updates": 0,
+  "resource_absent_by_cli_and_api": true,
+  "matching_operation_found": false,
+  "actual_billing_usd": null,
+  "conservative_attempt_bound_usd": 1.259439506117502,
+  "cumulative_conservative_bound_usd": 70.38245462458929,
+  "pilot_remaining_usd": 2.727545375410717,
+  "evaluation_reserve_usd": 16,
+  "total_cap_usd": 120,
+  "bound_includes_preprovisioning_setup_time": true,
+  "transfer_recovery": {
+    "sequential_cli": "timed-out",
+    "windows_storage_api": "socket-write-timeout",
+    "linux_storage_api_large_parts": "socket-write-timeout",
+    "smaller_256_kib_chunks": "complete-checksum-verified-transfer",
+    "full_transfer_seconds": 619.6377678790013,
+    "transport_checksum_verified": true,
+    "production_uploader_large_crc32c_check": "passed",
+    "production_uploader_new_file_check": "passed",
+    "renter_waits_for_verified_transfer": true,
+    "targeted_controls_passed": 21
+  },
+  "cloud_identifiers_and_credentials_exported": false,
+  "other_project_resources_touched": false
+}

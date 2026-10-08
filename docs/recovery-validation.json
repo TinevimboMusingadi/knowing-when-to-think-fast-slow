@@ -1,9 +1,9 @@
 {
   "schema_version": 2,
-  "recorded_utc": "2026-10-08T12:59:03.396093+00:00",
-  "status": "local-acceptance-passed-ready-for-owned-tpu-pilot",
+  "recorded_utc": "2026-10-08T14:14:27.528814+00:00",
+  "status": "local-acceptance-passed-pilot-awaits-stage-allocation-decision",
   "unit_tests": {
-    "passed": 111,
+    "passed": 116,
     "skipped": 1,
     "failed": 0
   },
@@ -196,8 +196,8 @@
   "tpu_numerical_report": "recovery-tpu-numerical.json",
   "full_model_pilot_accepted_updates": 3,
   "pilot_report": "recovery-pilot-report.json",
-  "current_cost_upper_bound_usd": 69.12301511847178,
-  "pilot_remaining_usd": 3.98698488152822,
+  "current_cost_upper_bound_usd": 70.38245462458929,
+  "pilot_remaining_usd": 2.727545375410717,
   "owned_tpu_running": false,
   "local_validation_running": false,
   "local_acceptance": {
@@ -254,7 +254,7 @@
       "scripts/export_reference.py": "1b03a80fb7b168a88d6b045c0957d2a10b84a1c56c0a15d61fd7f4b1c434b70d",
       "scripts/offline_probe.py": "e1e72e51d4c081d11e4e7093d97168bd0888077855bf9df39cf5324541d3cf65",
       "scripts/preflight.py": "5ad572683fae306e4cd40485db5ccec8a09c2c5f12f3d84578b219d373f0b54e",
-      "scripts/recovery_cloud.py": "df5a4bea86a00a21d5ab70dc91518940fb0b9f2d67d804bc2b3c63c5b104ae7e",
+      "scripts/recovery_cloud.py": "5af9067ec5fda84ada315b11e25950195497888764a57d9e90b1b5de0d731ba5",
       "scripts/restart_rl.py": "510f3477e493de6c61e49470f1120fb01f0f1202e2045b0174f2bf10380d0b82",
       "scripts/stage_limit.py": "9c2a107aecc25868acb57b2d078fb36bce055ded0c00d2b3c1d0143c2c4598e1",
       "scripts/token_audit.py": "b3fcd8e2a6a9e90afde3b8aa9128edb8d74befab792d2cce1be957b0300096d3",
@@ -295,7 +295,7 @@
     "cpu_async_dispatch": false,
     "candidate_reference": "identical scan body interpreted to bound reference memory",
     "cause_of_prior_loading_peak_isolated": false,
-    "full_model_report_sha256": "0e79151944080464f0c57bfd64d049618b079897980545ba380276ea5a5f069c"
+    "full_model_report_sha256": "9c872b2d79cc33eb806cd61da80fd24eab0e9df9a0d9368832022f04f82131f7"
   },
   "targeted_connection_tests": {
     "passed": 16,
@@ -306,5 +306,38 @@
     "passed": 1,
     "failed": 0,
     "covers_windows_skipped_test": true
-  }
+  },
+  "targeted_transfer_and_connection_controls": {
+    "passed": 21,
+    "failed": 0
+  },
+  "locked_transfer_and_orchestration_tests": {
+    "passed": 6,
+    "failed": 0
+  },
+  "latest_upload_attempt": "recovery-upload-attempt-20261008.json",
+  "production_upload_verification": {
+    "passed": true,
+    "large_existing_bytes": 35230297,
+    "large_existing_crc32c_verified": true,
+    "small_new_file_verified": true,
+    "large_verify_seconds": 11.236243484017905,
+    "small_create_seconds": 4.5094382769893855,
+    "accelerator_provisioned": false,
+    "existing_objects_overwritten": false
+  },
+  "full_transfer_verification": {
+    "run_id": "20261008-125916",
+    "passed": true,
+    "bytes": 35230297,
+    "seconds": 619.6377678790013,
+    "transport_checksum_verified": true,
+    "metadata_hash_verified": true,
+    "chunk_bytes": 262144,
+    "accelerator_provisioned": false,
+    "existing_objects_overwritten": false
+  },
+  "current_tpu_mixed_updates": 0,
+  "historical_full_model_pilot_update_kind": "disposable supervised diagnostics",
+  "paid_execution": "paused-pending-pilot-allocation-decision"
 }

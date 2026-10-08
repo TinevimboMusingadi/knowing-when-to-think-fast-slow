@@ -10,7 +10,7 @@ class RecoveryBudgetTests(unittest.TestCase):
     def test_new_cap_includes_prior_spend_and_evaluation_reserve(self):
         with tempfile.TemporaryDirectory() as folder:
             b=RecoveryBudget(self.config,Path(folder)/"ledger.json",now=lambda:1000.)
-            self.assertAlmostEqual(b.remaining("rl"),20)
+            self.assertAlmostEqual(b.remaining("rl"),self.config['budget']['rl'])
             item=b.begin("pilot","owned")
             allowance=self.config["budget"]["pilot"]
             self.assertAlmostEqual(item["deadline"]-1000,allowance/5.52*3600)
