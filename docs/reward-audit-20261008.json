@@ -1,0 +1,350 @@
+{
+  "schema_version": 1,
+  "recorded_utc": "2026-10-08T09:51:57.158740+00:00",
+  "method": "scripted counterexamples against the current EpisodeEnvV2 verifier",
+  "paid_compute": false,
+  "sampled_model_rollouts": false,
+  "training_or_performance_claim": false,
+  "passed": true,
+  "checks": [
+    {
+      "name": "correct-answer-outranks-wrong-answer",
+      "passed": true
+    },
+    {
+      "name": "correct-guess-without-required-evidence-is-penalized",
+      "passed": true
+    },
+    {
+      "name": "necessary-evidence-enables-grounded-correctness",
+      "passed": true
+    },
+    {
+      "name": "repeat-lookup-cannot-multiply-acquisition-bonus",
+      "passed": true
+    },
+    {
+      "name": "irrelevant-evidence-has-no-acquisition-bonus",
+      "passed": true
+    },
+    {
+      "name": "already-present-evidence-favors-immediate-correct-answer",
+      "passed": true
+    },
+    {
+      "name": "arbitrary-question-does-not-unlock-evidence",
+      "passed": true
+    },
+    {
+      "name": "no-intrinsic-bonus-for-any-mode",
+      "passed": true
+    },
+    {
+      "name": "gratuitous-switching-is-costly",
+      "passed": true
+    },
+    {
+      "name": "invalid-execution-is-penalized",
+      "passed": true
+    },
+    {
+      "name": "exhausted-lookup-limit-is-penalized",
+      "passed": true
+    },
+    {
+      "name": "efficiency-penalty-is-bounded-and-correctness-dominates",
+      "passed": true
+    },
+    {
+      "name": "candidate-encoding-work-is-charged",
+      "passed": true
+    },
+    {
+      "name": "oracle-answer-is-absent-from-policy-observations",
+      "passed": true
+    }
+  ],
+  "scenarios": {
+    "fast_correct": {
+      "reward": 0.998046875,
+      "correct": true,
+      "grounded": true,
+      "error": null,
+      "acquisition_success": false,
+      "reward_components": {
+        "correctness": 1.0,
+        "necessary_acquisition": 0.0,
+        "unsupported": -0.0,
+        "invalid": -0.0,
+        "efficiency": -0.001953125
+      },
+      "cost_proxy": 20.0
+    },
+    "fast_wrong": {
+      "reward": -0.001953125,
+      "correct": false,
+      "grounded": true,
+      "error": null,
+      "acquisition_success": false,
+      "reward_components": {
+        "correctness": 0.0,
+        "necessary_acquisition": 0.0,
+        "unsupported": -0.0,
+        "invalid": -0.0,
+        "efficiency": -0.001953125
+      },
+      "cost_proxy": 20.0
+    },
+    "unsupported_correct_guess": {
+      "reward": -0.501953125,
+      "correct": true,
+      "grounded": false,
+      "error": null,
+      "acquisition_success": false,
+      "reward_components": {
+        "correctness": 0.0,
+        "necessary_acquisition": 0.0,
+        "unsupported": -0.5,
+        "invalid": -0.0,
+        "efficiency": -0.001953125
+      },
+      "cost_proxy": 20.0
+    },
+    "necessary_lookup_then_answer": {
+      "reward": 1.044921875,
+      "correct": true,
+      "grounded": true,
+      "error": null,
+      "acquisition_success": true,
+      "reward_components": {
+        "correctness": 1.0,
+        "necessary_acquisition": 0.05,
+        "unsupported": -0.0,
+        "invalid": -0.0,
+        "efficiency": -0.005078125
+      },
+      "cost_proxy": 52.0
+    },
+    "repeat_lookup_then_answer": {
+      "reward": 1.041796875,
+      "correct": true,
+      "grounded": true,
+      "error": null,
+      "acquisition_success": true,
+      "reward_components": {
+        "correctness": 1.0,
+        "necessary_acquisition": 0.05,
+        "unsupported": -0.0,
+        "invalid": -0.0,
+        "efficiency": -0.008203125
+      },
+      "cost_proxy": 84.0
+    },
+    "irrelevant_lookup_then_guess": {
+      "reward": -0.505078125,
+      "correct": true,
+      "grounded": false,
+      "error": null,
+      "acquisition_success": false,
+      "reward_components": {
+        "correctness": 0.0,
+        "necessary_acquisition": 0.0,
+        "unsupported": -0.5,
+        "invalid": -0.0,
+        "efficiency": -0.005078125
+      },
+      "cost_proxy": 52.0
+    },
+    "context_present_answer": {
+      "reward": 0.998046875,
+      "correct": true,
+      "grounded": true,
+      "error": null,
+      "acquisition_success": false,
+      "reward_components": {
+        "correctness": 1.0,
+        "necessary_acquisition": 0.0,
+        "unsupported": -0.0,
+        "invalid": -0.0,
+        "efficiency": -0.001953125
+      },
+      "cost_proxy": 20.0
+    },
+    "context_present_lookup_then_answer": {
+      "reward": 0.994921875,
+      "correct": true,
+      "grounded": true,
+      "error": null,
+      "acquisition_success": false,
+      "reward_components": {
+        "correctness": 1.0,
+        "necessary_acquisition": 0.0,
+        "unsupported": -0.0,
+        "invalid": -0.0,
+        "efficiency": -0.005078125
+      },
+      "cost_proxy": 52.0
+    },
+    "arbitrary_question_then_guess": {
+      "reward": -0.505078125,
+      "correct": true,
+      "grounded": false,
+      "error": null,
+      "acquisition_success": false,
+      "reward_components": {
+        "correctness": 0.0,
+        "necessary_acquisition": 0.0,
+        "unsupported": -0.5,
+        "invalid": -0.0,
+        "efficiency": -0.005078125
+      },
+      "cost_proxy": 52.0
+    },
+    "same_answer_<mode:jev>": {
+      "reward": 0.998046875,
+      "correct": true,
+      "grounded": true,
+      "error": null,
+      "acquisition_success": false,
+      "reward_components": {
+        "correctness": 1.0,
+        "necessary_acquisition": 0.0,
+        "unsupported": -0.0,
+        "invalid": -0.0,
+        "efficiency": -0.001953125
+      },
+      "cost_proxy": 20.0
+    },
+    "same_answer_<mode:direct>": {
+      "reward": 0.998046875,
+      "correct": true,
+      "grounded": true,
+      "error": null,
+      "acquisition_success": false,
+      "reward_components": {
+        "correctness": 1.0,
+        "necessary_acquisition": 0.0,
+        "unsupported": -0.0,
+        "invalid": -0.0,
+        "efficiency": -0.001953125
+      },
+      "cost_proxy": 20.0
+    },
+    "same_answer_<mode:cot>": {
+      "reward": 0.998046875,
+      "correct": true,
+      "grounded": true,
+      "error": null,
+      "acquisition_success": false,
+      "reward_components": {
+        "correctness": 1.0,
+        "necessary_acquisition": 0.0,
+        "unsupported": -0.0,
+        "invalid": -0.0,
+        "efficiency": -0.001953125
+      },
+      "cost_proxy": 20.0
+    },
+    "extra_reason_and_switch": {
+      "reward": 0.997265625,
+      "correct": true,
+      "grounded": true,
+      "error": null,
+      "acquisition_success": false,
+      "reward_components": {
+        "correctness": 1.0,
+        "necessary_acquisition": 0.0,
+        "unsupported": -0.0,
+        "invalid": -0.0,
+        "efficiency": -0.0027343750000000003
+      },
+      "cost_proxy": 28.0
+    },
+    "invalid_action": {
+      "reward": -0.251953125,
+      "correct": false,
+      "grounded": true,
+      "error": "invalid mode/action framing",
+      "acquisition_success": false,
+      "reward_components": {
+        "correctness": 0.0,
+        "necessary_acquisition": 0.0,
+        "unsupported": -0.0,
+        "invalid": -0.25,
+        "efficiency": -0.001953125
+      },
+      "cost_proxy": 20.0
+    },
+    "too_many_lookups": {
+      "reward": -0.211328125,
+      "correct": false,
+      "grounded": true,
+      "error": "lookup limit",
+      "acquisition_success": true,
+      "reward_components": {
+        "correctness": 0.0,
+        "necessary_acquisition": 0.05,
+        "unsupported": -0.0,
+        "invalid": -0.25,
+        "efficiency": -0.011328125000000001
+      },
+      "cost_proxy": 116.0
+    },
+    "very_expensive_correct": {
+      "reward": 0.9,
+      "correct": true,
+      "grounded": true,
+      "error": null,
+      "acquisition_success": false,
+      "reward_components": {
+        "correctness": 1.0,
+        "necessary_acquisition": 0.0,
+        "unsupported": -0.0,
+        "invalid": -0.0,
+        "efficiency": -0.1
+      },
+      "cost_proxy": 100000.0
+    },
+    "candidate_encoding_work": {
+      "reward": 0.98828125,
+      "correct": true,
+      "grounded": true,
+      "error": null,
+      "acquisition_success": false,
+      "reward_components": {
+        "correctness": 1.0,
+        "necessary_acquisition": 0.0,
+        "unsupported": -0.0,
+        "invalid": -0.0,
+        "efficiency": -0.01171875
+      },
+      "cost_proxy": 120.0
+    },
+    "partial_acquisition_then_unsupported_answer": {
+      "reward": -0.455078125,
+      "correct": true,
+      "grounded": false,
+      "error": null,
+      "acquisition_success": true,
+      "reward_components": {
+        "correctness": 0.0,
+        "necessary_acquisition": 0.05,
+        "unsupported": -0.5,
+        "invalid": -0.0,
+        "efficiency": -0.005078125
+      },
+      "cost_proxy": 52.0
+    }
+  },
+  "limitations": [
+    "Necessary-acquisition shaping currently grants 0.05 for any required field acquired, even on an unfinished or incorrect task; final correctness still requires all evidence.",
+    "This audit does not establish sufficient reward variation in sampled policy groups, stable gradients, or learned switching.",
+    "Evidence grounding follows verified fixture metadata; it does not judge the semantic quality of arbitrary reasoning text."
+  ],
+  "observed_partial_acquisition_bonus": 0.05,
+  "source_hashes": {
+    "episode_v2.py": "35273676a2ecf7120c5f4330223d221d813c4eec522a469e8dca4cae31ab8796",
+    "data_v2.py": "50c288c73febde61ada3bf0e2fabecbf1427390764a2acb226e76220598b500f",
+    "audit_reward_v2.py": "8943e6f0a8fc56019fa739690c5952f8eb34f05e7cb7aba88316de42a84ce119"
+  }
+}
