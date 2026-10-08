@@ -6,13 +6,15 @@ An exploratory **Qwen3-1.7B** experiment with a complete shared backbone, its or
 
 Historical SFT completed 438 updates; its best retained checkpoint is step 150. One saved example performs lookup → JEV → a grounded correct answer. One verified RL update changed adapters and mode embeddings. Stable RL and performance gains remain unestablished. The final PyTorch/XLA pilot failed after reduction/optimizer execution and was verified deleted.
 
-The recovery implementation uses pinned Tunix/JAX with a custom mixed-action learner, FP32 trainable/optimizer state, versioned records and cost gates. Upstream's text-only GRPO learner does not support our custom head unchanged. **109 reference/control tests pass**. The first locked Linux acceptance passed 12 numerical and ten protocol checks, plus full 1.7B probability parity at the unchanged 0.001 tolerance. These are engineering checks, not held-out performance results.
+The recovery implementation uses pinned Tunix/JAX with a custom mixed-action learner, FP32 trainable/optimizer state, versioned records and cost gates. Upstream's text-only GRPO learner does not support our custom head unchanged. **111 unit tests pass**; a backend-dependent pilot-orchestration test passes separately in locked Linux. The first locked Linux acceptance passed 12 numerical and ten protocol checks, plus full 1.7B probability parity at the unchanged 0.001 tolerance. These are engineering checks, not held-out performance results.
 
 The first recovery TPU attempt passed 12 numerical checks and three full-model supervised diagnostic updates on all four devices. Warmed updates took 81.6 and 83.2 seconds, after a 13.6-minute cold step. The larger-batch compilation stopped responding to remote health checks. The exact cause remains unresolved; another numerical failure was not established. The owned TPU was **verified deleted**, preserving the numerical report. No corrective SFT or full-model mixed-action GRPO update completed. The [pilot record](docs/recovery-pilot-report.json) separates observed progress, incomplete logs and cost estimates. On October 8, compiler and host-dispatch changes passed fresh locked Linux acceptance: 13 numerical checks, ten protocol checks and full-model probability parity. Their TPU behavior remains unmeasured. See the [recovery validation status](docs/recovery-validation.json).
 
 See [the postmortem](POSTMORTEM.md), [article draft](docs/article.md), [retained weights](docs/saved-weights.json), and [v2 data manifest](docs/recovery-data-manifest.json). Historical reports retain their original schemas and budgets.
 
 The October 8 launch refused an empty Ed25519-only host-key probe before training. Its node was subsequently verified deleted. The connection-attempt bound is $1.50, taking the cumulative estimate to $67.75. [The preserved record](docs/recovery-connection-attempt-20261008.json) distinguishes the gate failure from training and includes completed deletion evidence. The repaired client supports bounded SSH readiness and supported key types; an actual successful connection is still required.
+
+The next attempt identified an unsupported key-exchange error in Windows' native scanner. Git's scanner obtained the owned endpoint's key successfully; the launcher now uses it. That attempt also started no training and was verified deleted, bringing the cumulative bound to $69.12. [The second record](docs/recovery-connection-attempt-20261008-120500.json) retains the diagnosis. The pilot prioritizes the required microbatch-1 and mixed-action checks; larger shapes are tested only when their measured projection fits the allowance.
 
 ## Model and protocol
 
@@ -37,7 +39,7 @@ The related source repository remains read-only. Data rebuilding needs the exist
 ```bash
 python -m switching.data_v2
 python -m unittest discover -s tests -q
-python -m switching.verified_download --uri gs://keeper-file-storage/knowing-when-to-switch/20261006-122830/checkpoints/step-000150-best-sft-rank0-565877d3 --output runs/recovery-v2/source-sft
+python -m switching.verified_download --uri gs://YOUR_BUCKET/YOUR_RUN/checkpoints/YOUR_VERIFIED_BEST_SFT --output runs/recovery-v2/source-sft
 python -m switching.conversion --checkpoint runs/recovery-v2/source-sft --output runs/recovery-v2/converted
 python scripts/export_reference.py --output runs/recovery-v2/tiny-reference
 .venv-tunix-linux/bin/python -m switching.validate_tunix --fixture runs/recovery-v2/tiny-reference --output runs/recovery-v2/local-numerical.json

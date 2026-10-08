@@ -99,40 +99,40 @@ class Experiment:
         self.control.record('restore',{'seconds':time.perf_counter()-started,'source_step':manifest['source_step'],
                             'devices':[str(d) for d in jax.local_devices()],'frozen_sha256':self.base_hash})
 
+    def pilot_setting(self,microbatch):
+        # Each setting uses disposable optimizer/policy state, never the SFT source.
+        self.control.check();cfg={**self.cfg,'microbatch':microbatch}
+        learner=MixedLearner(self.runtime,cfg,'sft',self.folder/f'pilot-microbatch-{microbatch}');times=[]
+        try:
+            source_actor=learner.actor
+            for iteration in range(3):
+                self.control.check(max(times,default=0));started=time.perf_counter()
+                learner.sft_step(self.train[:32]);times.append(time.perf_counter()-started)
+            changed={'adapters':False,'head':False,'rows':False}
+            for (path,old),new in zip(jax.tree_util.tree_flatten_with_path(source_actor)[0],jax.tree.leaves(learner.actor)):
+                if bool(jnp.any(old!=new)):
+                    name=jax.tree_util.keystr(path);component='head' if 'head' in name else 'rows' if 'rows' in name else 'adapters'
+                    changed[component]=True
+            if not all(changed.values()):raise RuntimeError(f'full-model diagnostic did not update all custom components: {changed}')
+            memory=memory_report(jax.local_devices())
+            setting={'microbatch':microbatch,'cold_step_seconds':times[0],'warmed_seconds':times[1:],
+                     'memory':memory,'accepted':all(r['headroom']>=self.cfg['min_memory_headroom'] for r in memory),
+                     'diagnostic_component_updates':changed}
+        except Exception as error:
+            if not device_memory_exhausted(error):raise
+            setting={'microbatch':microbatch,'accepted':False,'failure':'device-memory-exhausted',
+                     'error_type':type(error).__name__,'message':str(error)}
+        finally:learner.close()
+        self.control.record('pilot-setting',setting);self.control.sync();return setting
+
     def pilot(self):
         from .validate_tunix import validate
         self.control.check();validate(self.folder/'tiny-reference',self.folder/'tpu-numerical.json')
-        settings=[]
-        # Each setting uses disposable optimizer/policy state, never the SFT source.
-        for microbatch in (1,2,4):
-            self.control.check();cfg={**self.cfg,'microbatch':microbatch};learner=MixedLearner(self.runtime,cfg,'sft',self.folder/f'pilot-microbatch-{microbatch}')
-            times=[]
-            try:
-                source_actor=learner.actor
-                for iteration in range(3):
-                    self.control.check(max(times,default=0));started=time.perf_counter();learner.sft_step(self.train[:32]);times.append(time.perf_counter()-started)
-                changed={'adapters':False,'head':False,'rows':False}
-                for (path,old),new in zip(jax.tree_util.tree_flatten_with_path(source_actor)[0],jax.tree.leaves(learner.actor)):
-                    if bool(jnp.any(old!=new)):
-                        name=jax.tree_util.keystr(path);component='head' if 'head' in name else 'rows' if 'rows' in name else 'adapters'
-                        changed[component]=True
-                if not all(changed.values()):raise RuntimeError(f'full-model diagnostic did not update all custom components: {changed}')
-                memory=memory_report(jax.local_devices())
-                stable=all(r['headroom']>=self.cfg['min_memory_headroom'] for r in memory)
-                settings.append({'microbatch':microbatch,'cold_step_seconds':times[0],'warmed_seconds':times[1:],
-                                 'memory':memory,'accepted':stable,'diagnostic_component_updates':changed})
-                self.control.record('pilot-setting',settings[-1]);self.control.sync()
-            except Exception as error:
-                if not device_memory_exhausted(error):raise
-                stable=False
-                settings.append({'microbatch':microbatch,'accepted':False,'failure':'device-memory-exhausted',
-                                 'error_type':type(error).__name__,'message':str(error)})
-                self.control.record('pilot-setting',settings[-1]);self.control.sync()
-            finally:learner.close()
-            if not stable:break
-        viable=[s for s in settings if s['accepted']]
-        if not viable:raise StageLimit('replication did not retain measured memory headroom; no hardware upgrade')
-        best=min(viable,key=lambda s:np.median(s['warmed_seconds']));self.cfg['microbatch']=best['microbatch']
+        settings=[self.pilot_setting(1)]
+        if not settings[0]['accepted']:raise StageLimit('replication did not retain measured memory headroom; no hardware upgrade')
+        best=settings[0];self.cfg['microbatch']=1
+        # Prove sampled mixed-action learning and restoration before optional
+        # throughput tuning. Larger shapes must not consume these core checks.
         self.learner=MixedLearner(self.runtime,self.cfg,'rl',self.folder/'pilot-mixed')
         updates=[]
         for index in range(3):
@@ -143,10 +143,30 @@ class Experiment:
                 self.learner.restore(restored)
         assert_finite(self.learner.state(),'pilot-state')
         if tree_checksum(self.runtime.frozen)!=self.base_hash:raise RuntimeError('frozen backbone changed')
-        self.reports['pilot']={'passed':True,'settings':settings,'selected_microbatch':best['microbatch'],
-                    'mixed_accepted_updates':3,'save_reload_continuation':True,'frozen_unchanged':True,'rl_timings':updates}
-        (self.folder/'pilot.json').write_text(json.dumps(self.reports['pilot'],indent=2))
         self.learner.close();self.learner=None
+        core={'passed':True,'microbatch':1,'mixed_accepted_updates':3,'save_reload_continuation':True,
+              'frozen_unchanged':True,'rl_timings':updates}
+        (self.folder/'pilot-core.json').write_text(json.dumps(core,indent=2))
+        self.control.record('pilot-core',core);self.control.sync()
+        untested=[]
+        for microbatch in (2,4):
+            projection=self.control.budget.project('pilot',best['warmed_seconds'],2,
+                                                  compilation=best['cold_step_seconds'],checkpoint_cleanup=600)
+            self.control.record('pilot-optimization-projection',{'microbatch':microbatch,**projection})
+            if not projection['allowed']:
+                untested=[value for value in (2,4) if value>=microbatch]
+                self.control.record('pilot-optimization-skipped',{'microbatches':untested,'reason':'measured projection exceeds allowance'})
+                break
+            setting=self.pilot_setting(microbatch);settings.append(setting)
+            if not setting['accepted']:
+                untested=[value for value in (2,4) if value>microbatch];break
+            if np.median(setting['warmed_seconds'])<np.median(best['warmed_seconds']):best=setting
+        if tree_checksum(self.runtime.frozen)!=self.base_hash:raise RuntimeError('frozen backbone changed during tuning')
+        self.cfg['microbatch']=best['microbatch']
+        self.reports['pilot']={'passed':True,'settings':settings,'selected_microbatch':best['microbatch'],
+                    'mixed_accepted_updates':3,'save_reload_continuation':True,'frozen_unchanged':True,'rl_timings':updates,
+                    'untested_microbatches':untested,'optimization_complete':not untested}
+        (self.folder/'pilot.json').write_text(json.dumps(self.reports['pilot'],indent=2))
         # The real phase always begins at converted SFT; disposable pilot state is discarded.
         return best,updates
 

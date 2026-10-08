@@ -69,3 +69,17 @@ class RemoteAccessTests(unittest.TestCase):
             import json
             report=json.loads((folder/'remote-access.json').read_text())
             self.assertFalse(report['passed']);self.assertEqual(report['run_id'],'current')
+
+    def test_git_scanner_is_preferred_without_global_changes(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary);(root/'cmd').mkdir();(root/'usr/bin').mkdir(parents=True)
+            git=root/'cmd/git.exe';git.touch();scanner=root/'usr/bin/ssh-keyscan.exe';scanner.touch()
+            with patch.object(cloud.shutil,'which',return_value=str(git)):
+                selected,client=cloud.host_key_scanner()
+            self.assertEqual(Path(selected),scanner.resolve());self.assertEqual(client,'Git bundled OpenSSH')
+
+    def test_scanner_fallback_and_missing_client(self):
+        with patch.object(cloud.shutil,'which',side_effect=[None,'native-scanner']):
+            self.assertEqual(cloud.host_key_scanner(),('native-scanner','PATH OpenSSH'))
+        with patch.object(cloud.shutil,'which',return_value=None):
+            with self.assertRaises(RuntimeError):cloud.host_key_scanner()

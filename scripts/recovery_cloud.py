@@ -37,6 +37,18 @@ def observed_host_fingerprint(output,ip):
     return observed_host_key(output,ip)[1]
 
 
+def host_key_scanner():
+    # The Windows built-in scanner can advertise sntrup without implementing it.
+    # Use Git's installed OpenSSH without changing PATH or global SSH settings.
+    git=shutil.which('git.exe')
+    if git:
+        bundled=Path(git).resolve().parent.parent/'usr/bin/ssh-keyscan.exe'
+        if bundled.is_file():return str(bundled),'Git bundled OpenSSH'
+    scanner=shutil.which('ssh-keyscan.exe')
+    if scanner:return scanner,'PATH OpenSSH'
+    raise RuntimeError('Windows OpenSSH public host-key scanner unavailable')
+
+
 def probe_host_key(scanner,ip,probes,timeout=90):
     # READY can precede SSH readiness. Probe supported key types without accepting
     # a changed or ambiguous key, and leave the nonce/ownership gates in place.
@@ -72,8 +84,7 @@ def _verify_remote_access(session,out,report):
     identity=['--project',session['project'],'--zone',session['zone'],'--worker','0','--quiet']
     fingerprint=None;flags=[]
     if os.name=='nt':
-        scanner=shutil.which('ssh-keyscan.exe')
-        if not scanner:raise RuntimeError('Windows OpenSSH public host-key scanner unavailable')
+        scanner,client=host_key_scanner();report['host_key_client']=client
         report['stage']='host-key-probe'
         kind,fingerprint=probe_host_key(scanner,ip,report['host_key_probes'])
         report['host_key_algorithm']=kind
@@ -88,6 +99,8 @@ def _verify_remote_access(session,out,report):
     nonce='KWS_REMOTE_'+uuid.uuid4().hex
     result=gcloud('compute','tpus','tpu-vm','ssh',session['name'],*identity,*flags,
                   '--command',f'printf "%s\\n" {nonce}',check=False,timeout=60)
+    report['remote_command']={'returncode':result.returncode,'exact_response_seen':nonce in result.stdout.splitlines(),
+                              'stderr':result.stderr.replace(ip,'<owned-endpoint>')[-2000:]}
     if not remote_reply_verified(result,nonce):raise RuntimeError('remote command response not verified; training gate remains closed')
     after=describe(session)
     if after is None or after.get('labels')!=resource.get('labels') or after['networkEndpoints'][0]['accessConfig']['externalIp']!=ip:

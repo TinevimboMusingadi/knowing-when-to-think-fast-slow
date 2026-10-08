@@ -36,7 +36,7 @@
     "switching/tunix_distributed.py": "48b564303c6aa6991b1a028714f211be4e1f3d39e3804f3e1823ff78e5aa5b99",
     "switching/tunix_environment.py": "7577928ab50b9dbcbe85d2b1e5d64b0f1684345038b879a33739272c8a8a8aa3",
     "switching/tunix_evaluate.py": "6d42cc90941cd55f7398f040a048908927e8bd90ee9c0f884bf1f821696e5cdb",
-    "switching/tunix_experiment.py": "7d8c1fd8c31ba692d564bf5715e008b9c292f48daa805ced9943c5653b81dabe",
+    "switching/tunix_experiment.py": "7bcbf3ee803ec4a223756fce2e24af6297a359674e88839e6e5e7cfdba38a2dc",
     "switching/tunix_load.py": "27138f4e04aa4bfd7d4e9bcd31a58041cfe3bef394dba29b122072aab941d6d9",
     "switching/tunix_model.py": "4e00a5edc327cfa0ab20caf5c8866399fb46a7587d595d06e8ec7d18f3cb47d5",
     "switching/tunix_native.py": "b19810f639510b0bfe2f7a24fc91171645afbbdd58e47ba47ec906d179f0fbd9",
@@ -54,7 +54,7 @@
     "scripts/export_reference.py": "1b03a80fb7b168a88d6b045c0957d2a10b84a1c56c0a15d61fd7f4b1c434b70d",
     "scripts/offline_probe.py": "e1e72e51d4c081d11e4e7093d97168bd0888077855bf9df39cf5324541d3cf65",
     "scripts/preflight.py": "5ad572683fae306e4cd40485db5ccec8a09c2c5f12f3d84578b219d373f0b54e",
-    "scripts/recovery_cloud.py": "fe672ba6bc873676d2e21db0963efd793fdc356f8e313859c0faf9f1566c0578",
+    "scripts/recovery_cloud.py": "df5a4bea86a00a21d5ab70dc91518940fb0b9f2d67d804bc2b3c63c5b104ae7e",
     "scripts/restart_rl.py": "510f3477e493de6c61e49470f1120fb01f0f1202e2045b0174f2bf10380d0b82",
     "scripts/stage_limit.py": "9c2a107aecc25868acb57b2d078fb36bce055ded0c00d2b3c1d0143c2c4598e1",
     "scripts/token_audit.py": "b3fcd8e2a6a9e90afde3b8aa9128edb8d74befab792d2cce1be957b0300096d3",
@@ -84,7 +84,7 @@
     }
   ],
   "execution_stage": "complete",
-  "seconds": 601.0133328437805,
+  "seconds": 520.1637320518494,
   "environment": {
     "lock": "requirements-tunix-cpu.lock",
     "packages": {

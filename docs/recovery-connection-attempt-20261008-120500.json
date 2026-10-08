@@ -1,0 +1,89 @@
+{
+  "schema_version": 2,
+  "run_id": "20261008-120500",
+  "status": "failed-remote-gate-owned-resource-deleted",
+  "failure": {
+    "stage": "host-key-probe",
+    "type": "RuntimeError",
+    "message": "native Windows scanner rejected sntrup key exchange",
+    "precise_cause_established": true,
+    "verification": {
+      "passed": false,
+      "run_id": "20261008-120500",
+      "stage": "host-key-probe",
+      "host_key_probes": [
+        {
+          "returncode": 1,
+          "stderr": "# <owned-endpoint>:22 SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.10\nchoose_kex: unsupported KEX method sntrup761x25519-sha512@openssh.com\n# <owned-endpoint>:22 SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.10\nchoose_kex: unsupported KEX method sntrup761x25519-sha512@openssh.com\n# <owned-endpoint>:22 SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.10\nchoose_kex: unsupported KEX method sntrup761x25519-sha512@openssh.com\n"
+        },
+        {
+          "returncode": 1,
+          "stderr": "# <owned-endpoint>:22 SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.10\nchoose_kex: unsupported KEX method sntrup761x25519-sha512@openssh.com\n# <owned-endpoint>:22 SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.10\nchoose_kex: unsupported KEX method sntrup761x25519-sha512@openssh.com\n# <owned-endpoint>:22 SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.10\nchoose_kex: unsupported KEX method sntrup761x25519-sha512@openssh.com\n"
+        },
+        {
+          "returncode": 1,
+          "stderr": "# <owned-endpoint>:22 SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.10\nchoose_kex: unsupported KEX method sntrup761x25519-sha512@openssh.com\n# <owned-endpoint>:22 SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.10\nchoose_kex: unsupported KEX method sntrup761x25519-sha512@openssh.com\n# <owned-endpoint>:22 SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.10\nchoose_kex: unsupported KEX method sntrup761x25519-sha512@openssh.com\n"
+        },
+        {
+          "returncode": 1,
+          "stderr": "# <owned-endpoint>:22 SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.10\nchoose_kex: unsupported KEX method sntrup761x25519-sha512@openssh.com\n# <owned-endpoint>:22 SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.10\nchoose_kex: unsupported KEX method sntrup761x25519-sha512@openssh.com\n# <owned-endpoint>:22 SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.10\nchoose_kex: unsupported KEX method sntrup761x25519-sha512@openssh.com\n"
+        },
+        {
+          "returncode": 1,
+          "stderr": "# <owned-endpoint>:22 SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.10\nchoose_kex: unsupported KEX method sntrup761x25519-sha512@openssh.com\n# <owned-endpoint>:22 SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.10\nchoose_kex: unsupported KEX method sntrup761x25519-sha512@openssh.com\n# <owned-endpoint>:22 SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.10\nchoose_kex: unsupported KEX method sntrup761x25519-sha512@openssh.com\n"
+        },
+        {
+          "returncode": 1,
+          "stderr": "# <owned-endpoint>:22 SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.10\nchoose_kex: unsupported KEX method sntrup761x25519-sha512@openssh.com\n# <owned-endpoint>:22 SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.10\nchoose_kex: unsupported KEX method sntrup761x25519-sha512@openssh.com\n# <owned-endpoint>:22 SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.10\nchoose_kex: unsupported KEX method sntrup761x25519-sha512@openssh.com\n"
+        },
+        {
+          "returncode": null,
+          "timed_out": true
+        }
+      ],
+      "error": {
+        "type": "RuntimeError",
+        "message": "owned SSH host-key probe did not become ready before its deadline"
+      }
+    },
+    "alternative_client_proof": {
+      "run_id": "20261008-120500",
+      "client": "Git bundled OpenSSH key scanner",
+      "returncode": 0,
+      "stderr": "",
+      "passed": true,
+      "algorithm": "ssh-ed25519",
+      "fingerprint_recorded_locally": true,
+      "ownership_before_after": true
+    }
+  },
+  "training_started": false,
+  "accepted_updates": 0,
+  "resource_absent": true,
+  "absence_checked_at": 1791463204.2752078,
+  "deletion_operation": {
+    "done": true,
+    "exact_owned_target_verified_locally": true,
+    "metadata": {
+      "@type": "type.googleapis.com/google.cloud.common.OperationMetadata",
+      "createTime": "2026-10-08T12:17:04.567707779Z",
+      "endTime": "2026-10-08T12:22:30.166204224Z",
+      "verb": "delete",
+      "cancelRequested": false,
+      "apiVersion": "v2"
+    },
+    "response": {
+      "@type": "type.googleapis.com/google.protobuf.Empty"
+    }
+  },
+  "deleted_at": 1791462150.166204,
+  "cleanup_command_timeouts_proved_deletion": false,
+  "actual_billing_usd": null,
+  "attempt_cost_upper_bound_usd": 1.3773127988815308,
+  "cumulative_cost_upper_bound_usd": 69.12301511847178,
+  "pilot_remaining_usd": 3.98698488152822,
+  "cost_method": "pre-upload attempt start to API deletion completion, whole-slice bound plus 15%; confirmed absent by API and CLI",
+  "total_cap_usd": 120,
+  "evaluation_reserve_usd": 16,
+  "other_project_resources_touched": false
+}
