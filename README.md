@@ -12,6 +12,8 @@ The first recovery TPU attempt passed 12 numerical checks and three full-model s
 
 See [the postmortem](POSTMORTEM.md), [article draft](docs/article.md), [retained weights](docs/saved-weights.json), and [v2 data manifest](docs/recovery-data-manifest.json). Historical reports retain their original schemas and budgets.
 
+The October 8 launch refused an empty Ed25519-only host-key probe before training. Its node was subsequently verified deleted. The connection-attempt bound is $1.50, taking the cumulative estimate to $67.75. [The preserved record](docs/recovery-connection-attempt-20261008.json) distinguishes the gate failure from training and includes completed deletion evidence. The repaired client supports bounded SSH readiness and supported key types; an actual successful connection is still required.
+
 ## Model and protocol
 
 Train rank-16/alpha-32 LoRA on Q/K/V/O, the preserved 128-wide two-layer candidate-attention head, and three tied input/output mode rows. Other weights remain frozen. JEV stops language decoding, encodes independent state/candidate branches with reset positions, and compares them only inside the permutation-equivariant head. Typed actions include answer, defer, ask and lookup. Defer leaves the next mode to the model.

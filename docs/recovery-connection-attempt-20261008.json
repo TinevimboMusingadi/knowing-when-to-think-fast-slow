@@ -1,0 +1,43 @@
+{
+  "schema_version": 2,
+  "run_id": "20261008-110948",
+  "status": "failed-remote-gate-owned-resource-deleted",
+  "failure": {
+    "stage": "host-key-probe",
+    "type": "RuntimeError",
+    "message": "one public host key is required for the owned endpoint",
+    "ssh_probe_requested_algorithm": "ed25519",
+    "probe_stderr_retained": false,
+    "precise_readiness_or_key_type_cause_established": false
+  },
+  "training_started": false,
+  "accepted_updates": 0,
+  "resource_absent": true,
+  "absence_checked_at": 1791459427.302572,
+  "deletion_operation": {
+    "response": {
+      "@type": "type.googleapis.com/google.protobuf.Empty"
+    },
+    "name": "projects/serious-unison-452122-i2/locations/us-west4-a/operations/operation-1791458333685-65d52659bf718-a3fa2be9-11901ca2",
+    "done": true,
+    "metadata": {
+      "@type": "type.googleapis.com/google.cloud.common.OperationMetadata",
+      "createTime": "2026-10-08T11:18:53.701949695Z",
+      "endTime": "2026-10-08T11:27:16.189523025Z",
+      "target": "projects/serious-unison-452122-i2/locations/us-west4-a/nodes/kws-recovery-20261008-110948",
+      "verb": "delete",
+      "cancelRequested": false,
+      "apiVersion": "v2"
+    }
+  },
+  "deleted_at": 1791458836.189523,
+  "cleanup_command_timeouts_proved_deletion": false,
+  "actual_billing_usd": null,
+  "attempt_cost_upper_bound_usd": 1.5021975851217904,
+  "cumulative_cost_upper_bound_usd": 67.74570231959025,
+  "pilot_remaining_usd": 5.36429768040975,
+  "cost_method": "pre-upload attempt start to API deletion completion, whole-slice bound plus 15%; confirmed absent by API and CLI",
+  "total_cap_usd": 120,
+  "evaluation_reserve_usd": 16,
+  "other_project_resources_touched": false
+}

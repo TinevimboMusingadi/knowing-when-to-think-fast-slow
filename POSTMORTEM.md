@@ -123,6 +123,14 @@ Two owned local containers exhausted their six-GiB memory allowance. Instrumenta
 
 The reference harness records execution stages, disables asynchronous CPU dispatch and releases language-forward intermediates before candidate comparison. It interprets the candidate scan body for this memory-limited full-model reference. Compiled candidate forward/gradient behavior is checked separately on the small model and remains subject to the TPU pilot. This local pass establishes conversion parity; it is not training or a throughput result.
 
+### Connection-gate attempt on October 8
+
+Run `20261008-110948` passed local launch gates and created the approved interruptible slice. Its Ed25519-only public host-key scan returned no accepted key, so remote verification refused to release training. The scan's stderr was not retained; boot readiness, supported key types and network reachability cannot be distinguished from that record. No training began and no update was accepted.
+
+Deletion commands timed out while Google reported `DELETING`. The owned deletion operation subsequently completed at 11:27:16 UTC, and fresh API and CLI checks confirmed absence. The attempt adds a conservative $1.50 from the pre-upload start to the API deletion completion, using the whole-slice bound plus 15%. The cumulative bound is $67.75, with $5.36 left for the pilot. This remains an estimate rather than reconciled billing. [The connection-attempt record](docs/recovery-connection-attempt-20261008.json) preserves the operation evidence and uncertainty.
+
+The connection repair probes supported Ed25519, ECDSA and RSA host keys in deterministic preference order, permits up to 90 seconds for SSH readiness, and rejects ambiguous or changed keys. The exact remote nonce and resource-ownership checks remain required. Failure reports now replace any old success record. Cleanup observes a pending deletion rather than repeatedly reissuing it. Fourteen targeted control tests pass; fresh locked acceptance and an actual successful connection remain required before further training.
+
 ## Evidence used for this postmortem
 
 - [SFT lookup demonstration](docs/demo-record.json): sanitized actions and the actual saved answer.

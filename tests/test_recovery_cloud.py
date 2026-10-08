@@ -13,6 +13,10 @@ class RecoveryCloudTests(unittest.TestCase):
     def test_delete_success_requires_a_following_absence_check(self):
         with patch.object(cloud,"describe",side_effect=[{"labels":{"kws_run":"one","kws_schema":"v2"}},None]) as read,patch.object(cloud,"gcloud") as command,patch.object(cloud.time,"sleep"):
             cloud.delete_and_verify(self.session());self.assertEqual(read.call_count,2);command.assert_called_once()
+    def test_pending_deletion_is_observed_without_reissuing_delete(self):
+        pending={'labels':{'kws_run':'one','kws_schema':'v2'},'state':'DELETING'}
+        with patch.object(cloud,'describe',side_effect=[pending,None]),patch.object(cloud,'gcloud') as command,patch.object(cloud.time,'sleep'):
+            cloud.delete_and_verify(self.session());command.assert_not_called()
     def test_startup_uses_only_the_locked_tunix_environment(self):
         script=cloud.startup(self.session(),"gs://b/one/payload.tar.gz",{})
         self.assertIn("requirements-tunix-tpu.lock",script);self.assertIn("--require-hashes",script)

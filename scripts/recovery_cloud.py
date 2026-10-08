@@ -17,14 +17,45 @@ from switching.recovery_budget import RecoveryBudget
 from switching.experiment_v2 import launch_gates
 
 
-def observed_host_fingerprint(output,ip):
-    keys=set()
+HOST_KEY_TYPES=('ssh-ed25519','ecdsa-sha2-nistp256','ecdsa-sha2-nistp384','ecdsa-sha2-nistp521','ssh-rsa')
+
+
+def observed_host_key(output,ip):
+    keys={kind:set() for kind in HOST_KEY_TYPES}
     for line in output.splitlines():
         parts=line.split()
-        if len(parts)==3 and parts[0] in {ip,f'[{ip}]:22'} and parts[1]=='ssh-ed25519':keys.add(parts[2])
-    if len(keys)!=1:raise RuntimeError('one public host key is required for the owned endpoint')
-    digest=hashlib.sha256(base64.b64decode(next(iter(keys)),validate=True)).digest()
-    return 'SHA256:'+base64.b64encode(digest).decode().rstrip('=')
+        if len(parts)==3 and parts[0] in {ip,f'[{ip}]:22'} and parts[1] in keys:keys[parts[1]].add(parts[2])
+    if any(len(values)>1 for values in keys.values()):raise RuntimeError('ambiguous public host keys for the owned endpoint')
+    for kind in HOST_KEY_TYPES:
+        if keys[kind]:
+            digest=hashlib.sha256(base64.b64decode(next(iter(keys[kind])),validate=True)).digest()
+            return kind,'SHA256:'+base64.b64encode(digest).decode().rstrip('=')
+    raise RuntimeError('one public host key is required for the owned endpoint')
+
+
+def observed_host_fingerprint(output,ip):
+    return observed_host_key(output,ip)[1]
+
+
+def probe_host_key(scanner,ip,probes,timeout=90):
+    # READY can precede SSH readiness. Probe supported key types without accepting
+    # a changed or ambiguous key, and leave the nonce/ownership gates in place.
+    deadline=time.monotonic()+timeout
+    while True:
+        remaining=deadline-time.monotonic()
+        if remaining<=0:raise RuntimeError('owned SSH host-key probe did not become ready before its deadline')
+        try:
+            scanned=subprocess.run([scanner,'-T','10','-t','ed25519,ecdsa,rsa',ip],capture_output=True,text=True,
+                                   timeout=min(20,remaining),creationflags=subprocess.CREATE_NO_WINDOW if os.name=='nt' else 0)
+        except subprocess.TimeoutExpired:
+            probes.append({'returncode':None,'timed_out':True})
+        else:
+            probes.append({'returncode':scanned.returncode,'stderr':scanned.stderr.replace(ip,'<owned-endpoint>')[-1000:]})
+            # An ambiguous supported key is a trust failure, not boot readiness.
+            if any(len(line.split())==3 and line.split()[0] in {ip,f'[{ip}]:22'} and
+                   line.split()[1] in HOST_KEY_TYPES for line in scanned.stdout.splitlines()):
+                return observed_host_key(scanned.stdout,ip)
+        time.sleep(min(2,max(0,deadline-time.monotonic())))
 
 
 def remote_reply_verified(result,nonce):
@@ -33,7 +64,7 @@ def remote_reply_verified(result,nonce):
     return result.returncode==0 and nonce in result.stdout.splitlines()
 
 
-def verify_remote_access(session,out):
+def _verify_remote_access(session,out,report):
     resource=describe(session)
     if resource is None or resource.get('labels',{}).get('kws_run')!=session['run_id'] or resource.get('labels',{}).get('kws_schema')!='v2':
         raise PermissionError('remote access requires verified resource ownership')
@@ -43,9 +74,9 @@ def verify_remote_access(session,out):
     if os.name=='nt':
         scanner=shutil.which('ssh-keyscan.exe')
         if not scanner:raise RuntimeError('Windows OpenSSH public host-key scanner unavailable')
-        scanned=subprocess.run([scanner,'-T','10','-t','ed25519',ip],capture_output=True,text=True,
-                               timeout=20,creationflags=subprocess.CREATE_NO_WINDOW)
-        fingerprint=observed_host_fingerprint(scanned.stdout,ip)
+        report['stage']='host-key-probe'
+        kind,fingerprint=probe_host_key(scanner,ip,report['host_key_probes'])
+        report['host_key_algorithm']=kind
         pinned=Path(out)/'remote-host-keys'/f"{session['run_id']}.json"
         pinned.parent.mkdir(parents=True,exist_ok=True)
         if pinned.exists() and json.loads(pinned.read_text())!={'ip':ip,'fingerprint':fingerprint,'run_id':session['run_id']}:
@@ -53,6 +84,7 @@ def verify_remote_access(session,out):
         pinned.write_text(json.dumps({'ip':ip,'fingerprint':fingerprint,'run_id':session['run_id']},indent=2))
         flags=['--ssh-flag=-batch','--ssh-flag=-hostkey','--ssh-flag='+fingerprint]
     else:flags=['--ssh-flag=-oStrictHostKeyChecking=accept-new']
+    report['stage']='exact-remote-reply'
     nonce='KWS_REMOTE_'+uuid.uuid4().hex
     result=gcloud('compute','tpus','tpu-vm','ssh',session['name'],*identity,*flags,
                   '--command',f'printf "%s\\n" {nonce}',check=False,timeout=60)
@@ -60,9 +92,18 @@ def verify_remote_access(session,out):
     after=describe(session)
     if after is None or after.get('labels')!=resource.get('labels') or after['networkEndpoints'][0]['accessConfig']['externalIp']!=ip:
         raise RuntimeError('owned endpoint changed during remote verification')
-    report={'passed':True,'run_id':session['run_id'],'checked_at':time.time(),'owned_resource_before_after':True,
-            'host_key_sha256':fingerprint,'exact_remote_reply':True,'global_ssh_configuration_modified':False}
-    (Path(out)/'remote-access.json').write_text(json.dumps(report,indent=2));return report
+    report.update(passed=True,checked_at=time.time(),owned_resource_before_after=True,
+                  host_key_sha256=fingerprint,exact_remote_reply=True,global_ssh_configuration_modified=False,stage='complete')
+    return report
+
+
+def verify_remote_access(session,out):
+    report={'passed':False,'run_id':session['run_id'],'stage':'ownership','host_key_probes':[]}
+    try:return _verify_remote_access(session,out,report)
+    except Exception as error:
+        report['error']={'type':type(error).__name__,'message':str(error)}
+        raise
+    finally:(Path(out)/'remote-access.json').write_text(json.dumps(report,indent=2))
 
 
 def delete_and_verify(session,timeout=300):
@@ -73,7 +114,8 @@ def delete_and_verify(session,timeout=300):
             if resource is None:return time.time()
             labels=resource.get("labels",{})
             if labels.get("kws_run")!=session["run_id"] or labels.get("kws_schema")!="v2":raise PermissionError("resource ownership mismatch; refusing deletion")
-            gcloud("compute","tpus","tpu-vm","delete",session["name"],"--project",session["project"],"--zone",session["zone"],"--quiet",timeout=60)
+            if resource.get('state')!='DELETING':
+                gcloud("compute","tpus","tpu-vm","delete",session["name"],"--project",session["project"],"--zone",session["zone"],"--quiet",timeout=60)
         except PermissionError:raise
         except (RuntimeError,subprocess.TimeoutExpired) as exc:last_error=str(exc)
         time.sleep(5)
@@ -282,6 +324,10 @@ def execute(config,out,data):
             labels=resource.get("labels",{})
             if labels.get("kws_run")!=run or labels.get("kws_schema")!="v2":raise PermissionError("ownership changed")
             time.sleep(30)
+    except Exception as error:
+        (out/'launch-failure.json').write_text(json.dumps({'run_id':run,'type':type(error).__name__,
+            'message':str(error),'recorded_at':time.time()},indent=2))
+        raise
     finally:
         deleted=delete_and_verify(session);budget=RecoveryBudget(config,out/"budget.json")
         remote=gcloud("storage","cp",session["gcs_prefix"]+"/budget.json",str(out/"budget-remote-v2.json"),check=False)
