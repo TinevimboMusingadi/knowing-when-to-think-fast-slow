@@ -10,6 +10,7 @@ Tunix checkpoints (resume after spot preemption) go to checkpoint_root_directory
 from __future__ import annotations
 
 import argparse
+import collections
 import json
 import os
 import pathlib
@@ -149,6 +150,29 @@ def build(overrides: list[str]):
   return pipe
 
 
+def step_metrics(prompts, completions, rewards, advantages, **kwargs):
+  """Per-step routing log: keeps the VM hang guard fed, and feeds the blog."""
+  del prompts, advantages
+  from kwt import format as fmt  # pylint: disable=g-import-not-at-top
+
+  opts = [json.loads(str(o)) for o in kwargs.get("options", [])]
+  parsed = [fmt.parse(c, len(o)) for c, o in zip(completions, opts)]
+  answers = kwargs.get("answer", [])
+  n = max(len(parsed), 1)
+  modes = collections.Counter(p.first_mode or "none" for p in parsed)
+  row = {
+      "reward": float(sum(rewards) / n),
+      "valid": sum(p.valid for p in parsed) / n,
+      "correct": sum(fmt.is_correct(p, str(a), o)
+                     for p, a, o in zip(parsed, answers, opts)) / n,
+      "chars": sum(len(c) for c in completions) / n,
+      "switched": sum(p.switched for p in parsed) / n,
+      **{f"mode_{m}": modes.get(m, 0) / n for m in ("jev", "direct", "cot", "none")},
+  }
+  print("[step] " + json.dumps(row), flush=True)
+  return {}
+
+
 def _dry_run(pipe, tokenizer, dataset) -> None:
   """Everything create_rl_engine/GrpoLearner configure, minus model weights."""
   from tunix.rl.grpo import grpo_learner  # pylint: disable=g-import-not-at-top
@@ -226,6 +250,7 @@ def main() -> None:
   learner = grpo_learner.GrpoLearner(
       rl_engine=engine,
       reward_fns=pipe.obtain_reward_fn(),
+      metric_fns=[step_metrics],
       algo_config=grpo_learner.GrpoConfig(**pipe._config_mapping("grpo_config")),  # pylint: disable=protected-access
   )
   started = time.time()

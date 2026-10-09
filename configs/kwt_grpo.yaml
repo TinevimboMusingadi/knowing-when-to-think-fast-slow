@@ -38,6 +38,14 @@ rl_training_config:
   eval_every_n_steps: 1000000
   max_steps: 200
   gradient_accumulation_steps: null  # RL derives it from mini/micro batch sizes
+  # One chip (15.75 GB HBM): train / score one prompt group (8 rollouts) at a
+  # time and chunk the vocab-wide logprob computation. The first launch OOMed
+  # by 1.1 GB without these.
+  mini_batch_size: 4
+  train_micro_batch_size: 1
+  rollout_micro_batch_size: 1  # decode one group of 8 at a time (4.6 GB OOM at 4)
+  compute_logps_micro_batch_size: 1
+  compute_logps_chunk_size: 64
   checkpoint_root_directory: "/tmp/kwt/ckpt"
   checkpointing_options:
     max_to_keep: 2
@@ -67,7 +75,8 @@ grpo_config:
   epsilon: 0.2
 
 rollout_config:
-  total_generation_steps: 384
+  total_generation_steps: 320
+  kv_cache_size: 704  # prompt 320 + generation 320 + 64 (default pads +256)
   max_prompt_length: 320
   temperature: 1.0
   top_p: 1.0
