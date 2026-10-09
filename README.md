@@ -1,5 +1,33 @@
 # Knowing When to Switch
 
+## Active path: `kwt/` (text-mode GRPO on stock Tunix)
+
+Mode tags are text: `<mode:jev>`, `<mode:direct>` and `<mode:cot>`. A JEV decision is a single option-letter token, so stock Tunix GRPO can train it with no custom learner. At inference, [kwt/runtime.py](kwt/runtime.py) switches natively:
+- **JEV:** one forward step with logits masked to the option letters. It returns the chosen letter and its probability.
+- **Direct:** a capped, short generation.
+- **CoT:** a long generation that can hand off to JEV partway through.
+
+Rewards are correctness, format validity and a token-cost penalty. There is no reward for choosing a particular mode, so routing has to come from accuracy against cost.
+
+```bash
+pytest tests/test_kwt.py                              # unit tests
+bash scripts/smoke.sh                                 # free CPU run: Qwen3-0.6B, 2 GRPO steps
+bash scripts/tpu.sh launch r1 3                       # spot v5e-1, about $0.50/h, 3 h cap
+bash scripts/tpu.sh heartbeat r1                      # if this PC dies, the VM deletes itself
+bash scripts/tpu.sh logs r1 ; bash scripts/tpu.sh fetch r1 ; bash scripts/tpu.sh status
+python -m kwt.demo --lora runs/kwt/r1/lora.npz        # fresh-inference demo
+```
+
+The VM deletes itself in any of these cases:
+- the job ends, whether it succeeds or crashes;
+- the job log stops changing for 25 minutes;
+- the wall-clock deadline is reached;
+- the PC's heartbeat goes stale for 30 minutes.
+
+There is also an optional budget killer in [scripts/budget_killer](scripts/budget_killer/README.md).
+
+`switching/` is the archived custom-head research engine. Everything below describes that historical work.
+
 An exploratory **Qwen3-1.7B** experiment with a complete shared backbone, its original language head, and a typed decision head. Three learned tokens select **JEV**, **direct**, or **ordinary CoT**. Asking and controlled lookup are actions inside those modes.
 
 ## Current evidence
