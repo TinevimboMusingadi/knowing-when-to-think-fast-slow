@@ -55,11 +55,11 @@ rl_training_config:
     flush_every_n_steps: 1
   actor_optimizer_config:
     opt_type: "adamw"
-    learning_rate: 3e-6
+    learning_rate: 3e-5  # LoRA: 3e-6 (run 2) moved weights only ~0.5%
     schedule_type: "warmup_cosine_decay_schedule"
     init_value: 0.0
-    peak_value: 3e-6
-    end_value: 3e-7
+    peak_value: 3e-5
+    end_value: 3e-6
     warmup_ratio: 0.05
     warmup_steps: 10
     decay_steps: 200
