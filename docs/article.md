@@ -1,63 +1,122 @@
-# Knowing When to Switch
+# Knowing When to Think: teaching a 1.7B model to switch between fast decisions, direct answers and reasoning
 
-Choosing a known value from a few options should require less work than solving a multi-step problem. If a necessary fact is missing, a quick guess and a long explanation can both fail. Sometimes the useful next step is to ask for that fact.
+Some questions need step-by-step reasoning. Others are a lookup or a choice from a short list, and reasoning through them wastes tokens. Reasoning models usually either always think or let the user flip a switch. This project asks a narrower question: **can one small model learn, per question, whether to decide fast, answer directly, or reason, and switch partway through when that helps?**
 
-This project asks whether one small model can learn those choices: make a typed decision, answer directly, reason, or gather context before deciding. There are three modes—JEV, direct and ordinary chain-of-thought. Clarification and lookup are actions within them.
+It is a small open-source piece of a larger research direction on teaching models to switch reasoning modes. Everything here runs on [Qwen3-1.7B](https://huggingface.co/Qwen/Qwen3-1.7B) with LoRA, trained with [Tunix](https://github.com/google/tunix) (JAX) on a **single spot TPU v5e chip at about $0.50 an hour**.
 
-The prototype uses the complete [Qwen3-1.7B](https://huggingface.co/Qwen/Qwen3-1.7B) backbone and its language head. Shared LoRA adapters serve all three paths. A small attention head scores candidates, and three learned token rows select the mode. Emitting `<mode:jev>` stops language decoding and invokes that head. A mode token is a control signal, not evidence of good judgment.
+## Three modes, one model
 
-Each candidate is encoded with observed context in an isolated branch. Positions reset, and candidates compare only inside a head without candidate-position embeddings. Moving a candidate should move its probability with it. Four candidates still entail four branch encodings: short output alone does not prove lower latency or compute.
+The model starts every answer with a mode tag:
 
-The decision design is informed by [the JEV-style Qwen implementation](https://github.com/avbiswas/bev-train). Adaptive thinking already has substantial prior work, including [Think Only When You Need](https://arxiv.org/abs/2505.14631) and [AdaptThink](https://arxiv.org/abs/2505.13417). Qwen3 itself supports thinking and non-thinking operation. The question here is narrower: can a shared generative and typed-decision model learn useful transitions within a task?
+| mode | what the runtime does | example |
+|---|---|---|
+| `<mode:jev>` | **no generation**: one forward step, logits restricted to the option letters, argmax | `<mode:jev>`<br>`C` |
+| `<mode:direct>` | short capped generation, no reasoning budget | `<mode:direct>`<br>`<answer>9544</answer>` |
+| `<mode:cot>` | free reasoning, which can **hand off to JEV** for the final choice | `<mode:cot>`<br>`There are 18050 items. Dividing by two gives 9025.`<br>`<mode:jev>`<br>`B` |
 
-## What actually worked
+"JEV" is a fast, typed decision: pick one of the given options. It is inspired by [JEV-style decision models](https://github.com/avbiswas/bev-train). The switching is native: when the model emits `<mode:jev>`, the runtime ([kwt/runtime.py](../kwt/runtime.py)) stops generating text and runs a single masked forward pass. It returns the chosen letter and a probability for each option.
 
-The original supervised run completed 438 optimizer updates on four TPU devices. Its best retained checkpoint was selected at step 150 by validation loss. Training completion and decreasing loss do not establish held-out accuracy.
+## The simplification that made RL possible
 
-One saved rollout provides a concrete example. The task withholds a numeric record value. The SFT model requests a controlled lookup in direct mode, receives **1,912**, emits JEV, and selects **1,912** from four candidates. It uses 19 generated tokens. An always-direct baseline also answers that fixture correctly, using 35 tokens. Candidate encoding and the decision head still cost computation, so this example cannot establish a latency advantage.
+The first version of this project ([postmortem](../POSTMORTEM.md)) bolted a separate candidate-scoring head onto Qwen. That needed a custom RL learner mixing token log-probabilities with categorical head actions. Supervised training worked. Reinforcement learning never got a stable sampled update onto the TPU, because of NaNs, compiler stalls and operational failures. Most of the budget went on validation gates around that learner.
 
-The [saved demonstration](demo-record.json) contains modes, actions, evidence, candidate probabilities and the answer. It is a replay of a recorded rollout, not newly executed inference or live web research. Learned JEV → CoT and CoT → JEV demonstrations remain unestablished. Controller tests with supplied actions do not count as learned routing.
+The fix was to notice that **a JEV decision is already a categorical choice over a few tokens**. If the options are labelled A–F and each letter is a single token, choosing an option is just one constrained next-token step in the language head. Stock token-level GRPO can then train the whole policy (mode choice, reasoning and decision) with no custom learner. Only the inference runtime treats JEV specially.
 
-## Where reinforcement learning failed
+## Rewards: no reward for picking a mode
 
-A verified RL checkpoint shows one finite update that changed 224 LoRA tensors and the mode embeddings. Its frozen reference matched SFT. The decision head did not change in that warmup update. This establishes a real policy update, not improved reasoning, decision accuracy or routing.
+The GRPO reward ([kwt/rewards.py](../kwt/rewards.py)) has three terms:
 
-Subsequent attempts failed. One continuation's saved step-2 mode rows contained 18 NaNs; an integrity check showed the affected storage had downloaded correctly. That checkpoint is excluded from recovery.
+- **correctness**: 1 if the answer exactly matches the gold value. A JEV letter is mapped to its option first. There is no substring credit, because that is easy to game.
+- **format**: +0.1 for a valid trace, −0.2 otherwise.
+- **compute cost**: −0.002 per ~token, capped at 0.6 so cost never outweighs a correct answer.
 
-The final PyTorch/XLA pilot restored finite state on all four replicas. Its 16 rollouts executed without environment errors, and some reward groups had variation. Likelihoods and losses passed finite checks; every replica completed backward. The next failure was the post-update parameter/optimizer-state guard. No new update was accepted.
+Nothing rewards choosing a particular mode. Any routing has to come from the trade-off between accuracy and tokens.
 
-The logs do not separately identify reduced gradients and the optimizer's resulting tensors. They cannot establish an AdamW bug, a hardware fault or the precise numerical mechanism. The honest diagnosis is an unresolved failure between distributed reduction and updated state. The guard prevented publication of another invalid checkpoint.
+## Data
 
-Only four completed context-acquisition examples survived the original comparison. SFT switching, the evaluated finite RL policy and always-direct answered those fixtures correctly. Four examples do not establish an RL gain or represent all six behaviors.
+The 1,024 training tasks come from the project's verified single-turn episodes: fast comparisons, direct arithmetic, multi-step word problems including GSM8K training items, and "reason then decide" problems. Whether lettered options are shown decides whether JEV is available at all. An 80-question validation split was used during development. A **400-question test split was kept sealed** until the final evaluation. Wording that encoded the old forced routes ("Please solve this task:") was stripped.
 
-## Repairing the experiment
+## Run 1: RL from the base model collapsed
 
-The recovery uses a pinned Tunix/JAX Qwen implementation with a custom mixed-action learner. A JEV decision contributes its categorical log probability; it is never represented as an invented language token. Prompts, tool responses and padding receive no policy loss. Actor and reference states share a frozen backbone and remain separate on device.
+GRPO straight from Qwen3-1.7B (200 steps, 8 samples per prompt) failed instructively. The base model almost never wrote a valid mode tag; on validation, only 4% of its traces were valid. The cheapest valid format, `<mode:direct>`, was the only thing that ever scored, so GRPO pushed the whole policy onto it. After training, the policy chose direct for 100% of test questions and scored 6.8%, worse than the base model's 9.8%. RL can only sharpen choices the policy already makes.
 
-The update sequence exposes local gradients, FP32 averaged gradients, global norm clipping, AdamW, updated parameters and optimizer moments. Invalid state terminates the attempt with tensor diagnostics. There is no NaN-to-zero repair or repeated retry of a failed update.
+## Run 2: a short warm-start is what makes switching appear
 
-The task also needed repair. Visible prompts must not prescribe asking or looking up the answer. Clarification must request the advertised missing field; an arbitrary question must not automatically reveal it. Tool availability depends on public information. JEV can choose answer, defer, ask or lookup. Deferring leaves the next mode for the model to choose.
+The fix was 256 steps of supervised warm-start, which took 3.5 minutes on the TPU. It trains on traces rendered from each episode's verified mode sequence, so all three formats are in the policy before RL starts. That alone changed everything. On the **400 sealed test questions**, learned routing went from 9.8% to **50.5%**, with 100% valid traces. The model now uses all three modes and picks them by task type:
+- 76% of fast comparisons go straight to JEV;
+- 74% of "reason then decide" problems start in CoT;
+- a third of all traces switch from CoT to JEV partway through.
 
-The recovery dataset has 1,536 corrective SFT episodes, 120 validation episodes and 600 sealed test episodes. Source/context variants stay together, and template families differ across splits. The provenance audit reused 252 verified original public GSM8K training examples and imported no private teacher completions. Paired tasks vary whether useful evidence is present or missing; unnecessary tool requests provide a control. These remain arithmetic and context fixtures, not proof of broad reasoning or open-web competence. Split isolation does not prove absence of pretraining exposure.
+GRPO from this checkpoint at the first learning rate (3e-6) changed nothing measurable: 50.7% on test. The LoRA weights had moved by only about 0.5%. A small gain on the 80-question validation split (62.5% to 70%) turned out to be near-tie routing flips that did not replicate on the test split. I mention it because it was tempting to report.
 
-At this draft's current checkpoint, 116 unit tests pass, with one backend-dependent orchestration check passing separately in the locked Linux environment. The first complete locked Linux environment passed 12 numerical and ten protocol checks. Full 1.7B probability parity passed the fixed 0.001 tolerance. Acceptance after the compiler and connection repairs passed 13 numerical and ten protocol checks, plus full-model parity. Those checks passed again after the upload repair, together with six transfer/orchestration tests. These checks validate engineering behavior; they are not accuracy or performance results.
+## Run 3: GRPO at a LoRA-sized learning rate trades tokens, not accuracy
 
-The first Tunix TPU pilot then passed its numerical suite and three disposable full-model supervised updates. All trainable components changed. The first update took 13.6 minutes; two warmed updates took about 82 seconds each, with at least 39.8% measured device-memory headroom. A larger-batch compilation stopped responding to remote health checks. Host-memory pressure is a plausible explanation, but an OOM and another numerical failure were not established. The owned TPU was deleted and its absence verified. New corrective SFT and real full-model GRPO remain unfinished.
+At a 10× higher learning rate (3e-5), starting from the same warm-start checkpoint, GRPO clearly moved the policy. Comparing the first 100 rollout groups with the last 100:
+- the average trace shrank from 94 to 36 characters;
+- rollout accuracy rose from 69% to 76%;
+- the share of traces that **reason briefly and then hand off to a JEV decision** rose from 38% to 61%.
 
-![Diagnostic update times and device-memory observations from the incomplete TPU pilot](figures/recovery-pilot.png)
+The model learned that a one-line calculation followed by a JEV pick usually earns the full reward at a fraction of the cost:
 
-The first-update timing includes compilation and execution. The chart describes one repeated supervised diagnostic batch, not test accuracy or an RL improvement. [Its source record](recovery-pilot-report.json) identifies which values were observed live and which reports were preserved completely.
+```
+<mode:cot>
+(4682*2)+78=9442
+<mode:jev>
+D                      ← correct; JEV gives D probability 1.00
+```
 
-The next repair replaces candidate-by-candidate expansion of the backbone graph with a bounded loop and reduces repeated host dispatch for gradients and optimizer checks. Fresh locked Linux acceptance passed 13 numerical checks, ten protocol checks and full-model probability parity on October 8. The full-model reference needed Linux-local weight storage and permitted swap after two memory-limited local attempts failed. The original tolerance stayed fixed. The compiler repair is an engineering hypothesis awaiting a TPU measurement, not a demonstrated speedup.
+![GRPO training curves (run 3)](figures/kwt-training.png)
 
-## Measuring the question honestly
+**Sealed test results (400 questions, never looked at during development):**
 
-The cumulative ceiling is now **$120**, including prior attempts. The historical conservative estimate was **$62.11**. The first Tunix pilot adds **$4.13**. Two later connection attempts started no training and add **$2.88**. A failed upload adds another **$1.26** in the deliberately conservative ledger, although no accelerator was created, bringing the bound to **$70.38**; evaluation funds remain protected. Smaller transfer chunks subsequently completed the file in 10.3 minutes with checksum verification. Future payload transfers finish before the accelerator cost clock starts. The repaired connection still needs an actual verified remote command. These are bounds, not reconciled bills. [TPU pricing](https://cloud.google.com/tpu/pricing) requires accounting for the whole slice, including setup, compilation, uploads and verified deletion. Remaining money in the total budget does not automatically extend a stage's authorized allowance.
+| model | learned routing accuracy | mean generated tokens | first mode (JEV / direct / CoT) |
+|---|---|---|---|
+| Qwen3-1.7B base | 9.8% | 21 | mostly no valid tag |
+| GRPO from base (run 1) | 6.8% | 25 | 0% / 100% / 0% |
+| warm-start | 50.5% | 29.5 | 28% / 39% / 34% |
+| warm-start + GRPO, lr 3e-6 (run 2) | 50.7% | 29.6 | 28% / 39% / 34% |
+| **warm-start + GRPO, lr 3e-5 (run 3)** | **50.2%** | **23.6** | 14% / 39% / 47% |
+| warm-start, always CoT | 60.8% | 47.7 | forced |
+| run 3, always direct | 38.8% | 10.3 | forced |
 
-The planned comparison includes native Qwen thinking/non-thinking, corrected SFT and RL switching, fixed modes, and validation-selected confidence switching. Trained policies receive the same tools, observations and context capacity. Always-JEV's inability to generate reasoning is an explicit capability restriction.
+![Accuracy vs. tokens on the sealed test split](figures/kwt-accuracy-vs-tokens.png)
 
-Test settings and IDs are frozen before opening outcomes. Reports will include grounded accuracy by behavior, failures, calibration, generated and candidate tokens, synchronized warmed latency, cold-call overhead and costs. Accuracy intervals and paired source-group comparisons accompany measurements. One training seed is exploratory.
+The run 3 model kept the warm-start's accuracy while generating **20% fewer tokens**. With 400 questions, the 95% interval on accuracy is roughly ±5 points, so "same accuracy" is the honest reading. The gains and losses were uneven:
+- **fast decisions** improved from 58% to 82%;
+- forced **direct** answers improved from 14% to 39%;
+- **multi-step reasoning** fell from 50% to 37%, and "reason then decide" from 68% to 58%;
+- forced CoT dropped from 61% to 38%. The model now ends almost every reasoning trace with a JEV hand-off, which is invalid when no options are shown.
 
-A negative result is useful if it is reproducible. We currently have a supervised prototype, retained weights, one narrow learned demonstration, real but unstable RL attempts, and a recovery implementation under validation. We do not yet have evidence that switching improves the accuracy–compute tradeoff.
+## What this does and does not show
 
-[The code](https://github.com/TinevimboMusingadi/knowing-when-to-think-fast-slow) and [postmortem](../POSTMORTEM.md) preserve that distinction. The next claim must come from a stable update and a fair comparison, rather than the appeal of the idea.
+- **Native switching works.** One 1.7B model picks a mode per question, switches from reasoning to a single-step decision partway through a trace, and the runtime really executes the decision differently.
+- **The warm-start did the heavy lifting.** RL from the base model collapsed. RL from the warm-start learned to spend fewer tokens at equal accuracy. That is a cost reduction, not an accuracy gain.
+- **Learned routing does not beat always-CoT on accuracy.** Forcing CoT on the warm-start model scores 60.8% at 48 tokens. Learned routing scores about 50% at 24–30 tokens. Whether that trade is worth it depends on the task. The cost weight of 0.002 per token pushed the policy further toward brevity than these arithmetic-heavy tasks reward, and the next experiment is to lower it.
+- **Some of the "reasoning" is a hint, not a derivation.** Several correct run 3 traces contain arithmetic that is wrong (for example `(7212*7213)+59=79981`) followed by a correct JEV pick. The reward checks only the final answer, so it cannot tell faithful reasoning from a useful scratch note.
+- Token counts ignore that JEV still processes the whole prompt in one forward pass. Wall-clock latency was not measured.
+- This is one seed, one model size and small arithmetic-flavoured tasks. Lookup and clarification episodes, which are multi-turn, are left out.
+
+## Cost
+
+The whole experiment took about 7.5 spot v5e-1 VM-hours, including:
+- five launches that failed on configuration or out-of-memory errors;
+- two spot preemptions;
+- every evaluation.
+
+That came to roughly **$4** at about $0.50 per hour. Every VM deletes itself in four situations, all handled in [scripts/vm_startup.sh](../scripts/vm_startup.sh):
+- the job finishes or crashes;
+- the log goes silent;
+- the VM hits its budget deadline;
+- the laptop that launched it stops sending a heartbeat.
+
+## Try it
+
+```bash
+pytest tests/test_kwt.py
+MODULE=kwt.pipeline bash scripts/tpu.sh launch myrun 3     # warm-start -> GRPO -> eval on one spot v5e chip
+python -m kwt.demo --lora runs/kwt/run3/grpo/lora.npz --ask "Is 3029 more than 3030?" --options yes no
+```
+
+Fresh-inference demo traces from the run 3 model are in [demo-kwt-run3.json](demo-kwt-run3.json).
+
+Code: [github.com/TinevimboMusingadi/knowing-when-to-think-fast-slow](https://github.com/TinevimboMusingadi/knowing-when-to-think-fast-slow). The earlier custom-head draft is kept in [article-custom-head-draft.md](article-custom-head-draft.md).

@@ -1,0 +1,187 @@
+{
+  "fresh_inference": true,
+  "records": [
+    {
+      "behavior": "reasoning",
+      "question": "Each of 4 bags contains 5597 red and 47 blue beads. Find the total beads.\n\nOptions:\nA) 22580\nB) 22562\nC) 22582\nD) 22576",
+      "gold": "22576",
+      "trace": "<mode:cot>\n(5597*4)+47=22582\n<mode:jev>\nC",
+      "modes": [
+        "cot",
+        "jev"
+      ],
+      "jev_probs": {
+        "A": 8.191418099379177e-10,
+        "B": 1.922322544201105e-11,
+        "C": 1.0,
+        "D": 1.2439068663994135e-09
+      },
+      "tokens": 30
+    },
+    {
+      "behavior": "direct",
+      "question": "Each of 27 bags contains 5675 red and 6 blue beads. Find the total beads.",
+      "gold": "153387",
+      "trace": "<mode:direct>\n<answer>153576</answer>",
+      "modes": [
+        "direct"
+      ],
+      "jev_probs": null,
+      "tokens": 17
+    },
+    {
+      "behavior": "reason_decide",
+      "question": "A rectangle has sides 4682 and 39. Find its perimeter.\n\nOptions:\nA) 9432\nB) 9445\nC) 9450\nD) 9442",
+      "gold": "9442",
+      "trace": "<mode:cot>\n(4682*2)+78=9442\n<mode:jev>\nD",
+      "modes": [
+        "cot",
+        "jev"
+      ],
+      "jev_probs": {
+        "A": 2.2297950152960766e-09,
+        "B": 1.260572115441283e-11,
+        "C": 2.807445109720419e-10,
+        "D": 1.0
+      },
+      "tokens": 29
+    },
+    {
+      "behavior": "fast",
+      "question": "Using score=min(5,max(0,9081-defects)), score 9081 defects on the integer scale 0 through 5.\n\nOptions:\nA) 2\nB) 1\nC) 5\nD) 4\nE) 3\nF) 0",
+      "gold": "0",
+      "trace": "<mode:cot>\n9081-9081=0\n<mode:jev>\nF",
+      "modes": [
+        "cot",
+        "jev"
+      ],
+      "jev_probs": {
+        "A": 1.0612783984953467e-09,
+        "B": 2.80197653274028e-11,
+        "C": 4.94556062768936e-10,
+        "D": 2.589757075455168e-09,
+        "E": 1.774705271628818e-09,
+        "F": 1.0
+      },
+      "tokens": 25
+    },
+    {
+      "behavior": "direct",
+      "question": "A rectangle has sides 4638 and 67. Find its perimeter.",
+      "gold": "9410",
+      "trace": "<mode:direct>\n<answer>9472</answer>",
+      "modes": [
+        "direct"
+      ],
+      "jev_probs": null,
+      "tokens": 15
+    },
+    {
+      "behavior": "reasoning",
+      "question": "Each of 11 bags contains 7212 red and 59 blue beads. Find the total beads.\n\nOptions:\nA) 79989\nB) 79974\nC) 79981\nD) 79965",
+      "gold": "79981",
+      "trace": "<mode:cot>\n(7212*7213)+59=79981\n<mode:jev>\nC",
+      "modes": [
+        "cot",
+        "jev"
+      ],
+      "jev_probs": {
+        "A": 2.6633264482711638e-08,
+        "B": 7.508152433111093e-11,
+        "C": 1.0,
+        "D": 2.2515491693297918e-08
+      },
+      "tokens": 33
+    },
+    {
+      "behavior": "fast",
+      "question": "Each of 1 bags contains 8138 red and 18 blue beads. Find the total beads.\n\nOptions:\nA) 8147\nB) 8156\nC) 8166\nD) 8145",
+      "gold": "8156",
+      "trace": "<mode:cot>\n(8138+18)*1=8156\n<mode:jev>\nB",
+      "modes": [
+        "cot",
+        "jev"
+      ],
+      "jev_probs": {
+        "A": 7.211772068416167e-09,
+        "B": 0.9999998807907104,
+        "C": 2.2695628487667818e-08,
+        "D": 7.548080560582093e-08
+      },
+      "tokens": 29
+    },
+    {
+      "behavior": "fast",
+      "question": "Are 2882 units at least as many as an unavailable quantity?\n\nOptions:\nA) no\nB) unknown\nC) yes",
+      "gold": "unknown",
+      "trace": "<mode:jev>\nB",
+      "modes": [
+        "jev"
+      ],
+      "jev_probs": {
+        "A": 1.4810062898273912e-10,
+        "B": 1.0,
+        "C": 4.696781852331355e-10
+      },
+      "tokens": 7
+    },
+    {
+      "behavior": "fast",
+      "question": "Using score=min(5,max(0,5911-defects)), score 5910 defects on the integer scale 0 through 5.\n\nOptions:\nA) 5\nB) 0\nC) 2\nD) 3\nE) 1\nF) 4",
+      "gold": "1",
+      "trace": "<mode:cot>\n5910+1=5911\n<mode:jev>\nA",
+      "modes": [
+        "cot",
+        "jev"
+      ],
+      "jev_probs": {
+        "A": 0.9388183951377869,
+        "B": 0.0158845204859972,
+        "C": 3.907736390829086e-05,
+        "D": 5.106944081489928e-05,
+        "E": 0.027163300663232803,
+        "F": 0.018043654039502144
+      },
+      "tokens": 25
+    },
+    {
+      "behavior": "reasoning",
+      "question": "Each of 16 bags contains 5940 red and 54 blue beads. Find the total beads.",
+      "gold": "95904",
+      "trace": "<mode:direct>\n<answer>95340</answer>",
+      "modes": [
+        "direct"
+      ],
+      "jev_probs": null,
+      "tokens": 16
+    },
+    {
+      "behavior": "reason_decide",
+      "question": "Find how much 6705 exceeds 44.\n\nOptions:\nA) 6661\nB) 6657\nC) 6645\nD) 6677",
+      "gold": "6661",
+      "trace": "<mode:cot>\n6661\n<mode:jev>\nA",
+      "modes": [
+        "cot",
+        "jev"
+      ],
+      "jev_probs": {
+        "A": 1.0,
+        "B": 2.044674846102268e-11,
+        "C": 4.634237871919966e-12,
+        "D": 8.264052636652863e-12
+      },
+      "tokens": 18
+    },
+    {
+      "behavior": "direct",
+      "question": "Find how much 1649 exceeds 33.",
+      "gold": "1616",
+      "trace": "<mode:direct>\n<answer>1616</answer>",
+      "modes": [
+        "direct"
+      ],
+      "jev_probs": null,
+      "tokens": 15
+    }
+  ]
+}

@@ -26,6 +26,22 @@ The VM deletes itself in any of these cases:
 
 There is also an optional budget killer in [scripts/budget_killer](scripts/budget_killer/README.md).
 
+**Results** on the 400 sealed test questions, Qwen3-1.7B with LoRA on one spot v5e chip (about $4 in total):
+
+| model | learned-routing accuracy | tokens |
+|---|---|---|
+| base | 9.8% | 21 |
+| GRPO from base | 6.8% (collapsed to direct) | 25 |
+| SFT warm-start | 50.5% | 29.5 |
+| SFT + GRPO (lr 3e-5) | 50.2% | **23.6** |
+| SFT, always-CoT | 60.8% | 47.7 |
+
+- The warm-start is what makes the model switch modes.
+- GRPO from the warm-start kept the same accuracy with 20% fewer tokens.
+- Learned routing does not beat always-CoT on accuracy.
+
+The write-up is in [docs/article.md](docs/article.md). Raw eval JSON is in [docs/results/](docs/results/), and fresh demo traces are in [docs/demo-kwt-run3.json](docs/demo-kwt-run3.json).
+
 `switching/` is the archived custom-head research engine. Everything below describes that historical work.
 
 An exploratory **Qwen3-1.7B** experiment with a complete shared backbone, its original language head, and a typed decision head. Three learned tokens select **JEV**, **direct**, or **ordinary CoT**. Asking and controlled lookup are actions inside those modes.
