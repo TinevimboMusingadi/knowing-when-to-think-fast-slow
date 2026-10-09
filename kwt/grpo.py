@@ -43,7 +43,8 @@ def save_lora(model, path: str) -> int:
   from flax import nnx  # pylint: disable=g-import-not-at-top
 
   leaves = jax.tree_util.tree_flatten_with_path(nnx.state(model))[0]
-  arrays = {jax.tree_util.keystr(p): np.asarray(jax.device_get(v))
+  # npz cannot store bfloat16 (it round-trips as raw |V2), so save float32.
+  arrays = {jax.tree_util.keystr(p): np.asarray(jax.device_get(v), np.float32)
             for p, v in leaves if "lora" in jax.tree_util.keystr(p).lower()}
   np.savez(path, **arrays)
   return len(arrays)
@@ -54,7 +55,12 @@ def load_lora(model, path: str) -> int:
   import numpy as np  # pylint: disable=g-import-not-at-top
   from flax import nnx  # pylint: disable=g-import-not-at-top
 
+  import ml_dtypes  # pylint: disable=g-import-not-at-top
+
   saved = dict(np.load(path))
+  for key, arr in saved.items():
+    if arr.dtype.kind == "V" and arr.dtype.itemsize == 2:  # bf16 saved by older runs
+      saved[key] = arr.view(ml_dtypes.bfloat16)
   state = nnx.state(model)
   hits = 0
 
@@ -199,6 +205,7 @@ def main() -> None:
   ap.add_argument("--eval-rows", type=int, default=80, help="val rows per policy")
   ap.add_argument("--split", default="val", help="eval split (test is sealed)")
   ap.add_argument("--skip-before", action="store_true")
+  ap.add_argument("--init-lora", help="start the actor from these LoRA weights (SFT)")
   ap.add_argument("--random-weights", action="store_true",
                   help="tiny random Qwen3 (local CPU plumbing test, no download)")
   ap.add_argument("--dry-run", action="store_true",
@@ -236,6 +243,8 @@ def main() -> None:
     return
   engine = pipe.create_rl_engine(tokenizer)
   actor = engine.actor_trainer.model
+  if args.init_lora:
+    _log(f"init actor from {args.init_lora}: {load_lora(actor, args.init_lora)} tensors")
 
   def run_eval(name: str) -> None:
     _log(f"eval {name} on {len(eval_rows)} {args.split} rows")
@@ -259,7 +268,8 @@ def main() -> None:
 
   n = save_lora(actor, str(out / "lora.npz"))
   _log(f"saved {n} LoRA tensors")
-  run_eval("after")
+  if args.eval_rows:  # in-process eval can OOM next to the trainer; kwt.evaluate is separate
+    run_eval("after")
   (out / "DONE").write_text(json.dumps({"overrides": overrides, "seconds": time.time() - started}))
 
 

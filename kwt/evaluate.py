@@ -90,13 +90,17 @@ def main() -> None:
   ap.add_argument("--out", required=True)
   ap.add_argument("--splits", nargs="+", default=["val"])
   ap.add_argument("--limit", type=int, default=0)
+  ap.add_argument("--skip-base", action="store_true")
+  ap.add_argument("--random-weights", action="store_true", help="local plumbing test")
   ap.add_argument("overrides", nargs="*")
   args = ap.parse_args()
   out = pathlib.Path(args.out)
   out.mkdir(parents=True, exist_ok=True)
 
+  if args.random_weights:
+    grpo._random_weights_patch()  # pylint: disable=protected-access
   model, tokenizer = demo.load_model(None, args.overrides)
-  for stage in ("base", "trained"):
+  for stage in (("trained",) if args.skip_base else ("base", "trained")):
     if stage == "trained":
       print(f"[eval] loaded {grpo.load_lora(model, args.lora)} LoRA tensors", flush=True)
     runtime = rt.SwitchingRuntime(model, tokenizer)
