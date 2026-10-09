@@ -70,3 +70,51 @@ def table(report: dict) -> str:
 def dump(report: dict, path: str) -> None:
   with open(path, "w", encoding="utf-8") as handle:
     json.dump(report, handle, indent=2)
+
+
+def main() -> None:
+  """Standalone eval (fresh process = whole chip free):
+
+      python -m kwt.evaluate --lora in/lora.npz --out out --splits val test
+
+  Evaluates the base model (LoRA initialised to zero == base), then loads the
+  trained LoRA into the same model and evaluates again, and records demo traces.
+  """
+  import argparse  # pylint: disable=g-import-not-at-top
+  import pathlib  # pylint: disable=g-import-not-at-top
+
+  from kwt import demo, grpo, tasks  # pylint: disable=g-import-not-at-top
+
+  ap = argparse.ArgumentParser()
+  ap.add_argument("--lora", required=True)
+  ap.add_argument("--out", required=True)
+  ap.add_argument("--splits", nargs="+", default=["val"])
+  ap.add_argument("--limit", type=int, default=0)
+  ap.add_argument("overrides", nargs="*")
+  args = ap.parse_args()
+  out = pathlib.Path(args.out)
+  out.mkdir(parents=True, exist_ok=True)
+
+  model, tokenizer = demo.load_model(None, args.overrides)
+  for stage in ("base", "trained"):
+    if stage == "trained":
+      print(f"[eval] loaded {grpo.load_lora(model, args.lora)} LoRA tensors", flush=True)
+    runtime = rt.SwitchingRuntime(model, tokenizer)
+    for split in args.splits:
+      rows = tasks.load(split, args.limit or None)
+      rep = evaluate(runtime, rows)
+      dump(rep, str(out / f"eval_{stage}_{split}.json"))
+      print(f"[eval] {stage} {split} ({len(rows)} rows)\n{table(rep)}", flush=True)
+  # Fresh-inference demo traces from the trained model.
+  rows = tasks.load("val", 12)
+  results = runtime.run([r["question"] for r in rows], [rt.load_options(r) for r in rows])
+  records = [{"behavior": r["behavior"], "question": r["question"], "gold": r["answer"],
+              "trace": x.trace, "modes": x.modes, "jev_probs": x.jev_probs,
+              "tokens": x.generated_tokens} for r, x in zip(rows, results)]
+  with open(out / "demo_trained.json", "w", encoding="utf-8") as handle:
+    json.dump({"fresh_inference": True, "records": records}, handle, indent=2)
+  print("[eval] done", flush=True)
+
+
+if __name__ == "__main__":
+  main()

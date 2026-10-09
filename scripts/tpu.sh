@@ -8,7 +8,8 @@
 #   scripts/tpu.sh delete <run>        delete now
 #   scripts/tpu.sh fetch <run>         download outputs to runs/kwt/<run>
 #
-# Env overrides: ZONE, TYPE, RATE (USD/hour for the whole slice), NO_HEARTBEAT=1.
+# Env overrides: ZONE, TYPE, RATE (USD/hour for the whole slice), NO_HEARTBEAT=1,
+#   MODULE (default kwt.grpo; e.g. kwt.evaluate), INPUT (file staged to the VM's in/).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -36,6 +37,8 @@ launch)
       requirements-tunix-tpu.lock .vendor/tunix/tunix .vendor/tunix/LICENSE
   ls -la "$tmp/code.tar.gz"
   gcloud storage cp "$tmp/code.tar.gz" "$gcs/code.tar.gz"
+  # INPUT=gs://... or a local file: staged to <run>/in/ (the VM sees /opt/kwt/in/<name>).
+  [ -n "${INPUT:-}" ] && gcloud storage cp "$INPUT" "$gcs/in/"
   heartbeat=""
   if [ -z "${NO_HEARTBEAT:-}" ]; then
     heartbeat="$gcs/heartbeat"; date +%s | gcloud storage cp - "$heartbeat"
@@ -43,7 +46,7 @@ launch)
   gcloud compute tpus tpu-vm create "$vm" --project="$PROJECT" --zone="$ZONE" \
     --accelerator-type="$TYPE" --version="$VERSION" --spot --labels=kwt=1 \
     --scopes=https://www.googleapis.com/auth/cloud-platform \
-    --metadata="kwt-name=$vm,kwt-zone=$ZONE,kwt-project=$PROJECT,kwt-deadline=$deadline,kwt-gcs=$gcs,kwt-heartbeat=$heartbeat,kwt-args=$args" \
+    --metadata="kwt-name=$vm,kwt-zone=$ZONE,kwt-project=$PROJECT,kwt-deadline=$deadline,kwt-gcs=$gcs,kwt-heartbeat=$heartbeat,kwt-args=$args,kwt-module=${MODULE:-kwt.grpo}" \
     --metadata-from-file=startup-script=scripts/vm_startup.sh
   mkdir -p runs/kwt
   [ -f "$SPEND" ] || echo "run,type,started_utc,max_hours,rate_usd_h,max_usd" > "$SPEND"

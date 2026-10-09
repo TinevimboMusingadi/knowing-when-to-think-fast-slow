@@ -16,6 +16,7 @@ md() { curl -sf -H "Metadata-Flavor: Google" \
 NAME=$(md kwt-name); ZONE=$(md kwt-zone); PROJECT=$(md kwt-project)
 DEADLINE=$(md kwt-deadline); GCS=$(md kwt-gcs); HEARTBEAT=$(md kwt-heartbeat || echo "")
 ARGS=$(md kwt-args || echo "")
+MODULE=$(md kwt-module || echo ""); MODULE=${MODULE:-kwt.grpo}
 HANG_MIN=${HANG_MIN:-40}; HEARTBEAT_MIN=${HEARTBEAT_MIN:-30}
 
 W=/opt/kwt; mkdir -p "$W"; cd "$W"
@@ -71,6 +72,7 @@ trap 'delete_self "job exited rc=${RC:-?}"' EXIT
 {
   gcloud storage cp "$GCS/code.tar.gz" code.tar.gz && tar -xzf code.tar.gz
   mkdir -p "$W/ckpt" && gcloud storage rsync -r "$GCS/ckpt" "$W/ckpt" 2>/dev/null || true
+  mkdir -p "$W/in" && gcloud storage rsync -r "$GCS/in" "$W/in" 2>/dev/null || true
   python3 -m pip install -q uv==0.12.23
   python3 -m uv python install 3.12.14
   python3 -m uv venv -q --python 3.12.14 .venv
@@ -78,7 +80,7 @@ trap 'delete_self "job exited rc=${RC:-?}"' EXIT
   export PYTHONPATH=$W:$W/.vendor/tunix HF_HOME=$W/.cache/hf JAX_COMPILATION_CACHE_DIR=$W/.cache/jax
   .venv/bin/python -c "import jax; print('devices', jax.devices())"
   # shellcheck disable=SC2086
-  .venv/bin/python -m kwt.grpo --out "$W/out" \
+  .venv/bin/python -m "$MODULE" --out "$W/out" \
     rl_training_config.checkpoint_root_directory="$W/ckpt" $ARGS
 } > "$W/job.log" 2>&1
 RC=$?
