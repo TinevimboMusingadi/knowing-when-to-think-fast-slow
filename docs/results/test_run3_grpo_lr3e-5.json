@@ -1,0 +1,519 @@
+{
+  "learned": {
+    "all": {
+      "n": 400,
+      "accuracy": 0.5025,
+      "valid": 0.995,
+      "mean_tokens": 23.575,
+      "switch_rate": 0.4675,
+      "first_mode": {
+        "direct": 0.385,
+        "cot": 0.4725,
+        "jev": 0.1425
+      }
+    },
+    "reasoning": {
+      "n": 100,
+      "accuracy": 0.37,
+      "valid": 0.98,
+      "mean_tokens": 29.87,
+      "switch_rate": 0.37,
+      "first_mode": {
+        "direct": 0.54,
+        "cot": 0.39,
+        "jev": 0.07
+      }
+    },
+    "fast": {
+      "n": 100,
+      "accuracy": 0.82,
+      "valid": 1.0,
+      "mean_tokens": 21.94,
+      "switch_rate": 0.62,
+      "first_mode": {
+        "cot": 0.62,
+        "jev": 0.38
+      }
+    },
+    "reason_decide": {
+      "n": 100,
+      "accuracy": 0.58,
+      "valid": 1.0,
+      "mean_tokens": 26.57,
+      "switch_rate": 0.88,
+      "first_mode": {
+        "cot": 0.88,
+        "jev": 0.12
+      }
+    },
+    "direct": {
+      "n": 100,
+      "accuracy": 0.24,
+      "valid": 1.0,
+      "mean_tokens": 15.92,
+      "switch_rate": 0.0,
+      "first_mode": {
+        "direct": 1.0
+      }
+    },
+    "examples": [
+      {
+        "behavior": "reasoning",
+        "question": "Two stations each receive 6063 packages and dispatch 3. Find their combined remaining packages.",
+        "gold": "12120",
+        "trace": "<mode:direct>\n<answer>12126</answer>",
+        "correct": false,
+        "jev_probs": null,
+        "tokens": 16
+      },
+      {
+        "behavior": "fast",
+        "question": "Using score=min(5,max(0,floor((items-2972)/2))), score 2983 items on the integer scale 0 through 5.\n\nOptions:\nA) 5\nB) 1\nC) 2\nD) 0\nE) 4\nF) 3",
+        "gold": "5",
+        "trace": "<mode:cot>\n2983-2972=11\n11/2=5.5\nfloor(5.5)=5\n<mode:jev>\nA",
+        "correct": true,
+        "jev_probs": {
+          "A": 1.0,
+          "B": 1.236988755783791e-13,
+          "C": 3.763747871850763e-14,
+          "D": 2.970007527132272e-14,
+          "E": 2.0749531057245732e-15,
+          "F": 4.778143560405846e-16
+        },
+        "tokens": 43
+      },
+      {
+        "behavior": "reasoning",
+        "question": "Which is greater, 1807 or 11?",
+        "gold": "1807",
+        "trace": "<mode:direct>\n<answer>1807</answer>",
+        "correct": true,
+        "jev_probs": null,
+        "tokens": 15
+      },
+      {
+        "behavior": "reason_decide",
+        "question": "A delivery has 6737 boxes containing 67 parts each. Remove 13 parts. How many are left?\n\nOptions:\nA) 451363\nB) 451366\nC) 451382\nD) 451359",
+        "gold": "451366",
+        "trace": "<mode:cot>\n451363-13=451350\n<mode:jev>\nD",
+        "correct": false,
+        "jev_probs": {
+          "A": 9.795551250135759e-07,
+          "B": 1.2009121697076353e-08,
+          "C": 2.1108364833821724e-08,
+          "D": 0.9999990463256836
+        },
+        "tokens": 30
+      },
+      {
+        "behavior": "fast",
+        "question": "A delivery has 4566 boxes containing 4 parts each. Remove 7 parts. How many are left?\n\nOptions:\nA) 18247\nB) 18276\nC) 18257\nD) 18254",
+        "gold": "18257",
+        "trace": "<mode:cot>\n18257\n<mode:jev>\nC",
+        "correct": true,
+        "jev_probs": {
+          "A": 1.7841015775843516e-08,
+          "B": 1.330441423696982e-09,
+          "C": 0.9999815225601196,
+          "D": 1.846159648266621e-05
+        },
+        "tokens": 19
+      },
+      {
+        "behavior": "reasoning",
+        "question": "Two stations each receive 2950 packages and dispatch 9. Find their combined remaining packages.",
+        "gold": "5882",
+        "trace": "<mode:direct>\n<answer>5841</answer>",
+        "correct": false,
+        "jev_probs": null,
+        "tokens": 15
+      }
+    ]
+  },
+  "direct": {
+    "all": {
+      "n": 400,
+      "accuracy": 0.3875,
+      "valid": 1.0,
+      "mean_tokens": 10.335,
+      "switch_rate": 0.0,
+      "first_mode": {
+        "direct": 1.0
+      }
+    },
+    "reasoning": {
+      "n": 100,
+      "accuracy": 0.28,
+      "valid": 1.0,
+      "mean_tokens": 11.06,
+      "switch_rate": 0.0,
+      "first_mode": {
+        "direct": 1.0
+      }
+    },
+    "fast": {
+      "n": 100,
+      "accuracy": 0.53,
+      "valid": 1.0,
+      "mean_tokens": 8.26,
+      "switch_rate": 0.0,
+      "first_mode": {
+        "direct": 1.0
+      }
+    },
+    "reason_decide": {
+      "n": 100,
+      "accuracy": 0.5,
+      "valid": 1.0,
+      "mean_tokens": 11.1,
+      "switch_rate": 0.0,
+      "first_mode": {
+        "direct": 1.0
+      }
+    },
+    "direct": {
+      "n": 100,
+      "accuracy": 0.24,
+      "valid": 1.0,
+      "mean_tokens": 10.92,
+      "switch_rate": 0.0,
+      "first_mode": {
+        "direct": 1.0
+      }
+    },
+    "examples": [
+      {
+        "behavior": "reasoning",
+        "question": "Which is greater, 1807 or 11?",
+        "gold": "1807",
+        "trace": "<mode:direct>\n<answer>1807</answer>",
+        "correct": true,
+        "jev_probs": null,
+        "tokens": 10
+      },
+      {
+        "behavior": "reason_decide",
+        "question": "A delivery has 6737 boxes containing 67 parts each. Remove 13 parts. How many are left?\n\nOptions:\nA) 451363\nB) 451366\nC) 451382\nD) 451359",
+        "gold": "451366",
+        "trace": "<mode:direct>\n<answer>451366</answer>",
+        "correct": true,
+        "jev_probs": null,
+        "tokens": 12
+      },
+      {
+        "behavior": "fast",
+        "question": "Each of 2190 teams has 33 players and 30 substitutes. Count all participants.\n\nOptions:\nA) 137970\nB) 137967\nC) 137951\nD) 137971",
+        "gold": "137970",
+        "trace": "<mode:direct>\n<answer>137970</answer>",
+        "correct": true,
+        "jev_probs": null,
+        "tokens": 12
+      },
+      {
+        "behavior": "direct",
+        "question": "Which is greater, 9925 or 79?",
+        "gold": "9925",
+        "trace": "<mode:direct>\n<answer>9925</answer>",
+        "correct": true,
+        "jev_probs": null,
+        "tokens": 10
+      },
+      {
+        "behavior": "direct",
+        "question": "Which is greater, 4690 or 12?",
+        "gold": "4690",
+        "trace": "<mode:direct>\n<answer>4690</answer>",
+        "correct": true,
+        "jev_probs": null,
+        "tokens": 10
+      },
+      {
+        "behavior": "fast",
+        "question": "Are 9398 units fewer than an unavailable quantity?\n\nOptions:\nA) no\nB) unknown\nC) yes",
+        "gold": "unknown",
+        "trace": "<mode:direct>\n<answer>unknown</answer>",
+        "correct": true,
+        "jev_probs": null,
+        "tokens": 7
+      }
+    ]
+  },
+  "cot": {
+    "all": {
+      "n": 400,
+      "accuracy": 0.3825,
+      "valid": 0.615,
+      "mean_tokens": 26.6875,
+      "switch_rate": 0.99,
+      "first_mode": {
+        "cot": 1.0
+      }
+    },
+    "reasoning": {
+      "n": 100,
+      "accuracy": 0.23,
+      "valid": 0.44,
+      "mean_tokens": 33.95,
+      "switch_rate": 0.98,
+      "first_mode": {
+        "cot": 1.0
+      }
+    },
+    "fast": {
+      "n": 100,
+      "accuracy": 0.74,
+      "valid": 1.0,
+      "mean_tokens": 23.82,
+      "switch_rate": 1.0,
+      "first_mode": {
+        "cot": 1.0
+      }
+    },
+    "reason_decide": {
+      "n": 100,
+      "accuracy": 0.56,
+      "valid": 1.0,
+      "mean_tokens": 23.46,
+      "switch_rate": 1.0,
+      "first_mode": {
+        "cot": 1.0
+      }
+    },
+    "direct": {
+      "n": 100,
+      "accuracy": 0.0,
+      "valid": 0.02,
+      "mean_tokens": 25.52,
+      "switch_rate": 0.98,
+      "first_mode": {
+        "cot": 1.0
+      }
+    },
+    "examples": [
+      {
+        "behavior": "fast",
+        "question": "Using score=min(5,max(0,floor((items-2972)/2))), score 2983 items on the integer scale 0 through 5.\n\nOptions:\nA) 5\nB) 1\nC) 2\nD) 0\nE) 4\nF) 3",
+        "gold": "5",
+        "trace": "<mode:cot>\n2983-2972=11\n11/2=5.5\nfloor(5.5)=5\n<mode:jev>\nA",
+        "correct": true,
+        "jev_probs": {
+          "A": 1.0,
+          "B": 1.236988755783791e-13,
+          "C": 3.763747871850763e-14,
+          "D": 2.970007527132272e-14,
+          "E": 2.0749531057245732e-15,
+          "F": 4.778143560405846e-16
+        },
+        "tokens": 38
+      },
+      {
+        "behavior": "fast",
+        "question": "Each of 2190 teams has 33 players and 30 substitutes. Count all participants.\n\nOptions:\nA) 137970\nB) 137967\nC) 137951\nD) 137971",
+        "gold": "137970",
+        "trace": "<mode:cot>\n(2190*33)+30=72270+30=72300\n<mode:jev>\nA",
+        "correct": true,
+        "jev_probs": {
+          "A": 0.7087997794151306,
+          "B": 0.015271315351128578,
+          "C": 0.023560823872685432,
+          "D": 0.25236809253692627
+        },
+        "tokens": 35
+      },
+      {
+        "behavior": "reasoning",
+        "question": "Each of 8033 teams has 29 players and 11 substitutes. Count all participants.\n\nOptions:\nA) 321312\nB) 321327\nC) 321328\nD) 321320",
+        "gold": "321320",
+        "trace": "<mode:cot>\n(8033*29)+11*8033=321320\n<mode:jev>\nD",
+        "correct": true,
+        "jev_probs": {
+          "A": 4.619295168595272e-09,
+          "B": 2.2427464399510377e-11,
+          "C": 2.6622670734610665e-10,
+          "D": 1.0
+        },
+        "tokens": 32
+      },
+      {
+        "behavior": "fast",
+        "question": "Are 2520 units fewer than 2519 units?\n\nOptions:\nA) yes\nB) unknown\nC) no",
+        "gold": "no",
+        "trace": "<mode:cot>\n2519-2520=-1\n<mode:jev>\nC",
+        "correct": true,
+        "jev_probs": {
+          "A": 0.032865554094314575,
+          "B": 2.104148251191873e-07,
+          "C": 0.9671342372894287
+        },
+        "tokens": 20
+      },
+      {
+        "behavior": "fast",
+        "question": "Are 9398 units fewer than an unavailable quantity?\n\nOptions:\nA) no\nB) unknown\nC) yes",
+        "gold": "unknown",
+        "trace": "<mode:cot>\n9398-0=9398\n<mode:jev>\nB",
+        "correct": true,
+        "jev_probs": {
+          "A": 3.130883487756364e-05,
+          "B": 0.9999679327011108,
+          "C": 6.963910550439323e-07
+        },
+        "tokens": 20
+      },
+      {
+        "behavior": "fast",
+        "question": "Using score=min(5,max(0,floor((items-7441)/2))), score 7442 items on the integer scale 0 through 5.\n\nOptions:\nA) 4\nB) 5\nC) 0\nD) 1\nE) 3\nF) 2",
+        "gold": "0",
+        "trace": "<mode:cot>\n(7442-7441)/2=0.5\nfloor(0.5)=0\n<mode:jev>\nC",
+        "correct": true,
+        "jev_probs": {
+          "A": 2.3792041253800633e-11,
+          "B": 3.0333058113896083e-12,
+          "C": 1.0,
+          "D": 7.500398080395598e-10,
+          "E": 1.1725665577388966e-11,
+          "F": 8.277667613854067e-12
+        },
+        "tokens": 33
+      }
+    ]
+  },
+  "jev": {
+    "all": {
+      "n": 400,
+      "accuracy": 0.3175,
+      "valid": 0.615,
+      "mean_tokens": 0.615,
+      "switch_rate": 0.0,
+      "first_mode": {
+        "jev": 1.0
+      }
+    },
+    "reasoning": {
+      "n": 100,
+      "accuracy": 0.21,
+      "valid": 0.46,
+      "mean_tokens": 0.46,
+      "switch_rate": 0.0,
+      "first_mode": {
+        "jev": 1.0
+      }
+    },
+    "fast": {
+      "n": 100,
+      "accuracy": 0.56,
+      "valid": 1.0,
+      "mean_tokens": 1.0,
+      "switch_rate": 0.0,
+      "first_mode": {
+        "jev": 1.0
+      }
+    },
+    "reason_decide": {
+      "n": 100,
+      "accuracy": 0.5,
+      "valid": 1.0,
+      "mean_tokens": 1.0,
+      "switch_rate": 0.0,
+      "first_mode": {
+        "jev": 1.0
+      }
+    },
+    "direct": {
+      "n": 100,
+      "accuracy": 0.0,
+      "valid": 0.0,
+      "mean_tokens": 0.0,
+      "switch_rate": 0.0,
+      "first_mode": {
+        "jev": 1.0
+      }
+    },
+    "examples": [
+      {
+        "behavior": "fast",
+        "question": "Using score=min(5,max(0,floor((items-2972)/2))), score 2983 items on the integer scale 0 through 5.\n\nOptions:\nA) 5\nB) 1\nC) 2\nD) 0\nE) 4\nF) 3",
+        "gold": "5",
+        "trace": "<mode:jev>\nA",
+        "correct": true,
+        "jev_probs": {
+          "A": 0.6785049438476562,
+          "B": 0.04733799025416374,
+          "C": 0.029899921268224716,
+          "D": 0.16434641182422638,
+          "E": 0.06909136474132538,
+          "F": 0.01081941183656454
+        },
+        "tokens": 1
+      },
+      {
+        "behavior": "fast",
+        "question": "Each of 2190 teams has 33 players and 30 substitutes. Count all participants.\n\nOptions:\nA) 137970\nB) 137967\nC) 137951\nD) 137971",
+        "gold": "137970",
+        "trace": "<mode:jev>\nA",
+        "correct": true,
+        "jev_probs": {
+          "A": 0.7986971735954285,
+          "B": 0.009736605919897556,
+          "C": 0.008261946961283684,
+          "D": 0.1833043098449707
+        },
+        "tokens": 1
+      },
+      {
+        "behavior": "reasoning",
+        "question": "Each of 8033 teams has 29 players and 11 substitutes. Count all participants.\n\nOptions:\nA) 321312\nB) 321327\nC) 321328\nD) 321320",
+        "gold": "321320",
+        "trace": "<mode:jev>\nD",
+        "correct": true,
+        "jev_probs": {
+          "A": 0.14268052577972412,
+          "B": 0.0041262004524469376,
+          "C": 0.014596516266465187,
+          "D": 0.8385968208312988
+        },
+        "tokens": 1
+      },
+      {
+        "behavior": "fast",
+        "question": "Are 2520 units fewer than 2519 units?\n\nOptions:\nA) yes\nB) unknown\nC) no",
+        "gold": "no",
+        "trace": "<mode:jev>\nC",
+        "correct": true,
+        "jev_probs": {
+          "A": 0.030455948784947395,
+          "B": 5.8675190928170196e-08,
+          "C": 0.969543993473053
+        },
+        "tokens": 1
+      },
+      {
+        "behavior": "fast",
+        "question": "Are 9398 units fewer than an unavailable quantity?\n\nOptions:\nA) no\nB) unknown\nC) yes",
+        "gold": "unknown",
+        "trace": "<mode:jev>\nB",
+        "correct": true,
+        "jev_probs": {
+          "A": 7.327458778627616e-11,
+          "B": 1.0,
+          "C": 1.604186644632577e-10
+        },
+        "tokens": 1
+      },
+      {
+        "behavior": "reason_decide",
+        "question": "A delivery has 8364 boxes containing 30 parts each. Remove 27 parts. How many are left?\n\nOptions:\nA) 250909\nB) 250890\nC) 250904\nD) 250893",
+        "gold": "250893",
+        "trace": "<mode:jev>\nD",
+        "correct": true,
+        "jev_probs": {
+          "A": 0.23833130300045013,
+          "B": 0.12177254259586334,
+          "C": 0.08613647520542145,
+          "D": 0.5537596940994263
+        },
+        "tokens": 1
+      }
+    ]
+  }
+}

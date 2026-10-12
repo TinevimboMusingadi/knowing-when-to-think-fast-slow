@@ -1,0 +1,467 @@
+{
+  "learned": {
+    "all": {
+      "n": 400,
+      "accuracy": 0.0975,
+      "valid": 0.1075,
+      "mean_tokens": 21.05,
+      "switch_rate": 0.0,
+      "first_mode": {
+        "none": 0.645,
+        "direct": 0.355
+      }
+    },
+    "reasoning": {
+      "n": 100,
+      "accuracy": 0.17,
+      "valid": 0.17,
+      "mean_tokens": 22.57,
+      "switch_rate": 0.0,
+      "first_mode": {
+        "none": 0.58,
+        "direct": 0.42
+      }
+    },
+    "fast": {
+      "n": 100,
+      "accuracy": 0.0,
+      "valid": 0.04,
+      "mean_tokens": 18.13,
+      "switch_rate": 0.0,
+      "first_mode": {
+        "none": 0.76,
+        "direct": 0.24
+      }
+    },
+    "reason_decide": {
+      "n": 100,
+      "accuracy": 0.0,
+      "valid": 0.0,
+      "mean_tokens": 19.7,
+      "switch_rate": 0.0,
+      "first_mode": {
+        "direct": 0.26,
+        "none": 0.74
+      }
+    },
+    "direct": {
+      "n": 100,
+      "accuracy": 0.22,
+      "valid": 0.22,
+      "mean_tokens": 23.8,
+      "switch_rate": 0.0,
+      "first_mode": {
+        "direct": 0.5,
+        "none": 0.5
+      }
+    },
+    "examples": [
+      {
+        "behavior": "reasoning",
+        "question": "Two stations each receive 6063 packages and dispatch 3. Find their combined remaining packages.",
+        "gold": "12120",
+        "trace": "",
+        "correct": false,
+        "jev_probs": null,
+        "tokens": 8
+      },
+      {
+        "behavior": "fast",
+        "question": "Using score=min(5,max(0,floor((items-2972)/2))), score 2983 items on the integer scale 0 through 5.\n\nOptions:\nA) 5\nB) 1\nC) 2\nD) 0\nE) 4\nF) 3",
+        "gold": "5",
+        "trace": "",
+        "correct": false,
+        "jev_probs": null,
+        "tokens": 8
+      },
+      {
+        "behavior": "reasoning",
+        "question": "Which is greater, 1807 or 11?",
+        "gold": "1807",
+        "trace": "<mode:direct>\n1807 is greater than 11.\n<answer>1807</answer>",
+        "correct": true,
+        "jev_probs": null,
+        "tokens": 26
+      },
+      {
+        "behavior": "reason_decide",
+        "question": "A delivery has 6737 boxes containing 67 parts each. Remove 13 parts. How many are left?\n\nOptions:\nA) 451363\nB) 451366\nC) 451382\nD) 451359",
+        "gold": "451366",
+        "trace": "<mode:direct>\nThe total number of parts is 6737 boxes \u00d7 67 parts per box = 451359 parts.\n\nWe remove 13 parts, so the remaining number of parts is 4513",
+        "correct": false,
+        "jev_probs": null,
+        "tokens": 53
+      },
+      {
+        "behavior": "fast",
+        "question": "A delivery has 4566 boxes containing 4 parts each. Remove 7 parts. How many are left?\n\nOptions:\nA) 18247\nB) 18276\nC) 18257\nD) 18254",
+        "gold": "18257",
+        "trace": "<mode:direct>\nThe total number of parts is 4566 boxes \u00d7 4 parts per box = 18264 parts.\n\nWe remove 7 parts, so the remaining number of parts is 18264 - ",
+        "correct": false,
+        "jev_probs": null,
+        "tokens": 53
+      },
+      {
+        "behavior": "reasoning",
+        "question": "Two stations each receive 2950 packages and dispatch 9. Find their combined remaining packages.",
+        "gold": "5882",
+        "trace": "",
+        "correct": false,
+        "jev_probs": null,
+        "tokens": 8
+      }
+    ]
+  },
+  "direct": {
+    "all": {
+      "n": 400,
+      "accuracy": 0.1175,
+      "valid": 0.2275,
+      "mean_tokens": 41.4125,
+      "switch_rate": 0.0,
+      "first_mode": {
+        "direct": 1.0
+      }
+    },
+    "reasoning": {
+      "n": 100,
+      "accuracy": 0.19,
+      "valid": 0.27,
+      "mean_tokens": 40.62,
+      "switch_rate": 0.0,
+      "first_mode": {
+        "direct": 1.0
+      }
+    },
+    "fast": {
+      "n": 100,
+      "accuracy": 0.0,
+      "valid": 0.14,
+      "mean_tokens": 44.21,
+      "switch_rate": 0.0,
+      "first_mode": {
+        "direct": 1.0
+      }
+    },
+    "reason_decide": {
+      "n": 100,
+      "accuracy": 0.04,
+      "valid": 0.26,
+      "mean_tokens": 40.06,
+      "switch_rate": 0.0,
+      "first_mode": {
+        "direct": 1.0
+      }
+    },
+    "direct": {
+      "n": 100,
+      "accuracy": 0.24,
+      "valid": 0.24,
+      "mean_tokens": 40.76,
+      "switch_rate": 0.0,
+      "first_mode": {
+        "direct": 1.0
+      }
+    },
+    "examples": [
+      {
+        "behavior": "reasoning",
+        "question": "Which is greater, 1807 or 11?",
+        "gold": "1807",
+        "trace": "<mode:direct>\n1807 is greater than 11.\n<answer>1807</answer>",
+        "correct": true,
+        "jev_probs": null,
+        "tokens": 21
+      },
+      {
+        "behavior": "direct",
+        "question": "Which is greater, 1335 or 41?",
+        "gold": "1335",
+        "trace": "<mode:direct>\n1335 is greater than 41.\n<answer>1335</answer>",
+        "correct": true,
+        "jev_probs": null,
+        "tokens": 21
+      },
+      {
+        "behavior": "direct",
+        "question": "Which is greater, 9925 or 79?",
+        "gold": "9925",
+        "trace": "<mode:direct>\n9925 is greater than 79.\n<answer>9925</answer>",
+        "correct": true,
+        "jev_probs": null,
+        "tokens": 21
+      },
+      {
+        "behavior": "direct",
+        "question": "Which is greater, 4690 or 12?",
+        "gold": "4690",
+        "trace": "<mode:direct>\n4690 is greater than 12.\n<answer>4690</answer>",
+        "correct": true,
+        "jev_probs": null,
+        "tokens": 21
+      },
+      {
+        "behavior": "reason_decide",
+        "question": "Which is greater, 1483 or 7?\n\nOptions:\nA) 1464\nB) 1498\nC) 1476\nD) 1483",
+        "gold": "1483",
+        "trace": "<mode:direct>\n1483 is greater than 7.\n<answer>1483</answer>",
+        "correct": true,
+        "jev_probs": null,
+        "tokens": 20
+      },
+      {
+        "behavior": "direct",
+        "question": "Which is greater, 1335 or 41?",
+        "gold": "1335",
+        "trace": "<mode:direct>\n1335 is greater than 41.\n<answer>1335</answer>",
+        "correct": true,
+        "jev_probs": null,
+        "tokens": 21
+      }
+    ]
+  },
+  "cot": {
+    "all": {
+      "n": 400,
+      "accuracy": 0.54,
+      "valid": 0.955,
+      "mean_tokens": 152.6875,
+      "switch_rate": 0.0,
+      "first_mode": {
+        "cot": 1.0
+      }
+    },
+    "reasoning": {
+      "n": 100,
+      "accuracy": 0.57,
+      "valid": 0.92,
+      "mean_tokens": 145.44,
+      "switch_rate": 0.0,
+      "first_mode": {
+        "cot": 1.0
+      }
+    },
+    "fast": {
+      "n": 100,
+      "accuracy": 0.39,
+      "valid": 0.98,
+      "mean_tokens": 163.43,
+      "switch_rate": 0.0,
+      "first_mode": {
+        "cot": 1.0
+      }
+    },
+    "reason_decide": {
+      "n": 100,
+      "accuracy": 0.48,
+      "valid": 0.98,
+      "mean_tokens": 141.44,
+      "switch_rate": 0.0,
+      "first_mode": {
+        "cot": 1.0
+      }
+    },
+    "direct": {
+      "n": 100,
+      "accuracy": 0.72,
+      "valid": 0.94,
+      "mean_tokens": 160.44,
+      "switch_rate": 0.0,
+      "first_mode": {
+        "cot": 1.0
+      }
+    },
+    "examples": [
+      {
+        "behavior": "reasoning",
+        "question": "Two stations each receive 6063 packages and dispatch 3. Find their combined remaining packages.",
+        "gold": "12120",
+        "trace": "<mode:cot>\nTwo stations each receive 6063 packages and dispatch 3. To find their combined remaining packages, we first calculate the total number of packages received by both stations:\n\n$$\n6063 + 6063 = 12126\n$$\n\nNext, we calculate the total number of packages dispatched by both stations:\n\n$$\n3 + 3 = 6\n$$\n\nNow, we subtract the total dispatched packages from the total received packages to find the combined remaining packages:\n\n$$\n12126 - 6 = 12120\n$$\n\nThus, the combined remaining packages are:\n\n$$\n\\boxed{12120}\n$$\n<answer>12120</answer>",
+        "correct": true,
+        "jev_probs": null,
+        "tokens": 155
+      },
+      {
+        "behavior": "fast",
+        "question": "Using score=min(5,max(0,floor((items-2972)/2))), score 2983 items on the integer scale 0 through 5.\n\nOptions:\nA) 5\nB) 1\nC) 2\nD) 0\nE) 4\nF) 3",
+        "gold": "5",
+        "trace": "<mode:cot>\nWe are given the formula for the score:\n\n$$\n\\text{score} = \\min(5, \\max(0, \\lfloor \\frac{\\text{items} - 2972}{2} \\rfloor))\n$$\n\nWe are asked to calculate the score for 2983 items.\n\nFirst, compute the value inside the floor function:\n\n$$\n\\frac{2983 - 2972}{2} = \\frac{11}{2} = 5.5\n$$\n\nNow take the floor of 5.5:\n\n$$\n\\lfloor 5.5 \\rfloor = 5\n$$\n\nNow apply the max and min functions:\n\n$$\n\\max(0, 5) = 5\n$$\n$$\n\\min(5, 5) = 5\n$$\n\nSo the score is:\n\n$$\n\\text{score} = 5\n$$\n\n<answer>5</answer>",
+        "correct": true,
+        "jev_probs": null,
+        "tokens": 205
+      },
+      {
+        "behavior": "reasoning",
+        "question": "Which is greater, 1807 or 11?",
+        "gold": "1807",
+        "trace": "<mode:cot>\n1807 is greater than 11. The number 1807 is much larger than 11.\n<answer>1807</answer>",
+        "correct": true,
+        "jev_probs": null,
+        "tokens": 36
+      },
+      {
+        "behavior": "fast",
+        "question": "A delivery has 4566 boxes containing 4 parts each. Remove 7 parts. How many are left?\n\nOptions:\nA) 18247\nB) 18276\nC) 18257\nD) 18254",
+        "gold": "18257",
+        "trace": "<mode:cot>\nWe are given that there are 4566 boxes, each containing 4 parts. We are asked to remove 7 parts from the total.\n\nFirst, calculate the total number of parts:\n$$\n4566 \\times 4 = 18264\n$$\n\nNext, subtract the 7 parts that are removed:\n$$\n18264 - 7 = 18257\n$$\n\nSo, the number of parts left is 18257.\n\n<answer>18257</answer>",
+        "correct": true,
+        "jev_probs": null,
+        "tokens": 117
+      },
+      {
+        "behavior": "reasoning",
+        "question": "Two stations each receive 2950 packages and dispatch 9. Find their combined remaining packages.",
+        "gold": "5882",
+        "trace": "<mode:cot>\nWe are given that two stations each receive 2950 packages and dispatch 9. We are asked to find their combined remaining packages.\n\nFirst, let's calculate the number of packages each station has remaining after dispatching 9 packages. \n\nEach station receives 2950 packages and dispatches 9, so the remaining packages for each station is:\n\n$$\n2950 - 9 = 2941\n$$\n\nNow, we need to find the combined remaining packages for both stations:\n\n$$\n2941 + 2941 = 5882\n$$\n\nThus, the combined remaining packages are:\n\n$$\n\\boxed{5882}\n$$\n<answer>5882</answer>",
+        "correct": true,
+        "jev_probs": null,
+        "tokens": 157
+      },
+      {
+        "behavior": "fast",
+        "question": "Each of 2190 teams has 33 players and 30 substitutes. Count all participants.\n\nOptions:\nA) 137970\nB) 137967\nC) 137951\nD) 137971",
+        "gold": "137970",
+        "trace": "<mode:cot>\nWe are given that there are 2190 teams, each with 33 players and 30 substitutes. To find the total number of participants, we calculate the total number of players and substitutes separately and then add them together.\n\n1. Total number of players = 2190 teams \u00d7 33 players per team = 2190 \u00d7 33\n2. Total number of substitutes = 2190 teams \u00d7 30 substitutes per team = 2190 \u00d7 30\n\nLet's compute these values:\n\n- 2190 \u00d7 33 = 72270\n- 2190 \u00d7 30 = 65700\n\nNow, add the two totals:\n\n- 72270 + 65700 = 137970\n\nSo, the total number of participants is 137970.\n\n<answer>137970</answer>",
+        "correct": true,
+        "jev_probs": null,
+        "tokens": 211
+      }
+    ]
+  },
+  "jev": {
+    "all": {
+      "n": 400,
+      "accuracy": 0.1675,
+      "valid": 0.615,
+      "mean_tokens": 0.615,
+      "switch_rate": 0.0,
+      "first_mode": {
+        "jev": 1.0
+      }
+    },
+    "reasoning": {
+      "n": 100,
+      "accuracy": 0.07,
+      "valid": 0.46,
+      "mean_tokens": 0.46,
+      "switch_rate": 0.0,
+      "first_mode": {
+        "jev": 1.0
+      }
+    },
+    "fast": {
+      "n": 100,
+      "accuracy": 0.28,
+      "valid": 1.0,
+      "mean_tokens": 1.0,
+      "switch_rate": 0.0,
+      "first_mode": {
+        "jev": 1.0
+      }
+    },
+    "reason_decide": {
+      "n": 100,
+      "accuracy": 0.32,
+      "valid": 1.0,
+      "mean_tokens": 1.0,
+      "switch_rate": 0.0,
+      "first_mode": {
+        "jev": 1.0
+      }
+    },
+    "direct": {
+      "n": 100,
+      "accuracy": 0.0,
+      "valid": 0.0,
+      "mean_tokens": 0.0,
+      "switch_rate": 0.0,
+      "first_mode": {
+        "jev": 1.0
+      }
+    },
+    "examples": [
+      {
+        "behavior": "reason_decide",
+        "question": "A delivery has 6737 boxes containing 67 parts each. Remove 13 parts. How many are left?\n\nOptions:\nA) 451363\nB) 451366\nC) 451382\nD) 451359",
+        "gold": "451366",
+        "trace": "<mode:jev>\nB",
+        "correct": true,
+        "jev_probs": {
+          "A": 0.052166394889354706,
+          "B": 0.9475930333137512,
+          "C": 4.174232526565902e-05,
+          "D": 0.0001988029689528048
+        },
+        "tokens": 1
+      },
+      {
+        "behavior": "fast",
+        "question": "Are 9398 units fewer than an unavailable quantity?\n\nOptions:\nA) no\nB) unknown\nC) yes",
+        "gold": "unknown",
+        "trace": "<mode:jev>\nB",
+        "correct": true,
+        "jev_probs": {
+          "A": 6.431660494854441e-06,
+          "B": 0.9999935626983643,
+          "C": 4.2719367598920144e-08
+        },
+        "tokens": 1
+      },
+      {
+        "behavior": "fast",
+        "question": "Two stations each receive 4269 packages and dispatch 15. Find their combined remaining packages.\n\nOptions:\nA) 8493\nB) 8508\nC) 8499\nD) 8497",
+        "gold": "8508",
+        "trace": "<mode:jev>\nB",
+        "correct": true,
+        "jev_probs": {
+          "A": 0.00037765345769003034,
+          "B": 0.9996082186698914,
+          "C": 7.325779733946547e-06,
+          "D": 6.922784905327717e-06
+        },
+        "tokens": 1
+      },
+      {
+        "behavior": "fast",
+        "question": "Are 3123 units fewer than 3122 units?\n\nOptions:\nA) yes\nB) no\nC) unknown",
+        "gold": "no",
+        "trace": "<mode:jev>\nB",
+        "correct": true,
+        "jev_probs": {
+          "A": 0.00028718041721731424,
+          "B": 0.9997114539146423,
+          "C": 1.3612705060950248e-06
+        },
+        "tokens": 1
+      },
+      {
+        "behavior": "reason_decide",
+        "question": "A delivery has 2961 boxes containing 24 parts each. Remove 23 parts. How many are left?\n\nOptions:\nA) 71028\nB) 71041\nC) 71036\nD) 71022",
+        "gold": "71041",
+        "trace": "<mode:jev>\nB",
+        "correct": true,
+        "jev_probs": {
+          "A": 0.0030955709517002106,
+          "B": 0.9968839287757874,
+          "C": 4.516444278124254e-06,
+          "D": 1.5879126294748858e-05
+        },
+        "tokens": 1
+      },
+      {
+        "behavior": "reason_decide",
+        "question": "Which is greater, 4987 or 16?\n\nOptions:\nA) 4975\nB) 4987\nC) 4974\nD) 4971",
+        "gold": "4987",
+        "trace": "<mode:jev>\nB",
+        "correct": true,
+        "jev_probs": {
+          "A": 6.256549500704978e-09,
+          "B": 1.0,
+          "C": 5.842820671730919e-10,
+          "D": 3.8386988032712566e-10
+        },
+        "tokens": 1
+      }
+    ]
+  }
+}

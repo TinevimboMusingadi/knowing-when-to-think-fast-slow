@@ -2,6 +2,8 @@
 
 Updated October 8, 2026. This postmortem preserves the stopped PyTorch/XLA attempt. Its TPU was verified deleted. The later authorized Tunix recovery, including its first paid pilot, is recorded separately below.
 
+[The current RL status and blockers report](RL_STATUS_AND_BLOCKERS.md) explains the complete sequence, the engineering failures, how the pilot budget became a constraint, and what is still required before a full TPU RL run can be called complete.
+
 We built a working supervised prototype and saved a real context-acquisition demonstration. We did not finish stable reinforcement learning or establish an accuracy or efficiency improvement. That distinction is the main result of this attempt.
 
 The project asks whether one Qwen3-1.7B model can learn when to use three execution paths: JEV-style candidate scoring, direct answering, and ordinary chain-of-thought. Three learned mode tokens select those paths. Clarification and lookup are actions within them. The model shares its backbone and language head, with LoRA adapters, a decision-scoring head and new token embeddings as the trainable components. Private teacher material is excluded from this write-up and its demo export.
