@@ -39,10 +39,10 @@ def load(run_dirs, split, items):
   return out
 
 
-def utility(rows, ids):
+def utility(rows, ids, lam=None):
   c = np.array([rows[i][0] for i in ids], float)
   t = np.array([rows[i][1] for i in ids], float)
-  return c, t, c - LAM * t
+  return c, t, c - (LAM if lam is None else lam) * t
 
 
 def boot_diff(a, b, n=4000, seed=0):
@@ -60,6 +60,9 @@ def main() -> None:
   ap.add_argument("--split", default="test")
   ap.add_argument("--items", default="data/kwt-v2/labelled.jsonl")
   ap.add_argument("--ref", default="e3", help="model compared against the others")
+  ap.add_argument("--sweep", nargs="*", type=float,
+                  help="token prices: re-score ref/auto vs ref/cot and vs other autos at each "
+                  "(outputs are fixed; this re-prices tokens, it does not retrain)")
   args = ap.parse_args()
   items = {}
   with open(args.items, encoding="utf-8") as handle:
@@ -81,6 +84,21 @@ def main() -> None:
       share = "/".join(f"{modes.count(m) / len(modes):.0%}" for m in ("jev", "direct", "cot"))
       print(f"| {name} | {control} | {len(ids)} | {c.mean():.1%} | {t.mean():.1f} | {u.mean():.3f} | {share} |")
   ref = data.get(args.ref, {}).get("auto")
+  if ref and args.sweep:
+    print(f"\nToken-price sweep: utility of {args.ref}/auto minus each baseline (95% CI)\n")
+    others = [(n, "cot") for n in [args.ref]] + [(n, "auto") for n in sorted(data) if n != args.ref]
+    print("| λ | " + " | ".join(f"vs {n}/{c}" for n, c in others) + " |")
+    print("|---|" + "---|" * len(others))
+    for lam in args.sweep:
+      cells = []
+      for n, c in others:
+        rows = data[n].get(c)
+        ids = sorted(set(rows) & set(ref))
+        m, lo, hi = boot_diff(utility(ref, ids, lam)[2], utility(rows, ids, lam)[2])
+        star = "*" if lo > 0 or hi < 0 else ""
+        cells.append(f"{m:+.3f} [{lo:+.3f}, {hi:+.3f}]{star}")
+      print(f"| {lam:g} | " + " | ".join(cells) + " |")
+    return
   if ref:
     print(f"\nPaired bootstrap, utility difference vs {args.ref}/auto (95% CI):\n")
     for name in sorted(data):

@@ -169,6 +169,36 @@ def score(rows: list[dict], results: list[dict], control: str, lam: float = labe
   return out
 
 
+def latency(model, tok, rows: list[dict], out: pathlib.Path) -> dict:
+  """Wall-clock per question at batch 1. A warm-up pass compiles every shape
+  (prompt bucket, mode, JEV length bucket) so the timed pass measures serving."""
+  runner = Runner(model, tok, batch=1)
+  out.mkdir(parents=True, exist_ok=True)
+  report = {}
+  for control in ("auto", "cot"):
+    for r in rows:  # warm-up, untimed
+      runner.run([r], control)
+    times, tokens, modes = [], [], []
+    for r in rows:
+      t0 = time.perf_counter()
+      res = runner.run([r], control)[0]
+      times.append(time.perf_counter() - t0)
+      tokens.append(res["tokens"])
+      m = _HEAD.match(res["completion"])
+      modes.append(m.group(2) if m else "none")
+    report[control] = {
+        "n": len(rows), "mean_s": round(statistics.mean(times), 3),
+        "median_s": round(statistics.median(times), 3),
+        "p90_s": round(sorted(times)[int(0.9 * len(times))], 3),
+        "mean_tokens": round(statistics.mean(tokens), 1),
+        "per_mode_mean_s": {m: round(statistics.mean([t for t, mm in zip(times, modes) if mm == m]), 3)
+                            for m in set(modes)},
+    }
+    _log(f"latency {control}: {report[control]}")
+  (out / "latency.json").write_text(json.dumps(report, indent=2))
+  return report
+
+
 def table(report: dict) -> str:
   lines = ["| control | acc | tokens | utility | obey | routing acc | regret | modes j/d/c |",
            "|---|---|---|---|---|---|---|---|"]
@@ -196,6 +226,9 @@ def main() -> None:
   ap.add_argument("--limit", type=int, default=0)
   ap.add_argument("--batch", type=int, default=16)
   ap.add_argument("--model", default="qwen3-4b=Qwen/Qwen3-4B")
+  ap.add_argument("--latency", type=int, default=0,
+                  help="instead of scoring: time N test items one at a time (batch 1) "
+                  "under auto and forced cot, after an untimed warm-up pass")
   ap.add_argument("overrides", nargs="*")
   args = ap.parse_args()
 
@@ -210,6 +243,11 @@ def main() -> None:
   for name, lora in runs:
     if lora:
       _log(f"{name}: loaded {grpo.load_lora(model, lora)} LoRA tensors from {lora}")
+    if args.latency:
+      test = [r for r in all_rows if r["split"] == "test"]  # stored grouped by source:
+      step = max(1, len(test) // args.latency)              # take every k-th row
+      latency(model, tok, test[::step][:args.latency], pathlib.Path(args.out) / name)
+      continue
     runner = Runner(model, tok, args.batch)
     out = pathlib.Path(args.out) / name
     out.mkdir(parents=True, exist_ok=True)
