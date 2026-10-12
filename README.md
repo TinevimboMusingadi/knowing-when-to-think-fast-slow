@@ -7,8 +7,9 @@ v2 replaces v1's routing labels, which were assigned by construction, with label
 - **GRPO** trains with a verifiable reward plus a decaying *route-regret* term from a hidden-state probe.
 
 Results on the sealed test split (799 items):
-- learned routing matches always-CoT accuracy (88.5% vs 88.6%) with ~30% fewer tokens;
-- with the regret term, two RL seeds land within 0.1 points (88.6% and 88.5%), whereas outcome-only RL varied from 87.0% to 80.4% across seeds.
+- learned routing matches always-CoT accuracy with ~30% fewer tokens and is ~20% faster at batch 1 ([blog post](docs/blog-v2.md));
+- the suggested-vs-actual regret reward makes RL stable: 88.6% ± 0.3 over 5 seeds, against 85.7% ± 3.2 for outcome-only RL (p = 0.008);
+- once tokens are priced at λ ≥ 0.001, learned routing significantly beats always-CoT ([sweep](docs/results-v2-token-price-sweep.md)).
 
 Pipeline (each step is a module; TPU jobs go through `scripts/tpu.sh`):
 

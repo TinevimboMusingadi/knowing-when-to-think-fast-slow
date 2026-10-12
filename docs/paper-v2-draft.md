@@ -13,7 +13,7 @@ A mode tag at the start of the answer selects the mode, and the runtime executes
 
 The main lesson from v1 was about labels. Routing labels assigned when the data is generated taught the model the wrong thing: the same task family appeared under every "behavior", and learned routing never beat always-CoT. Here, the target mode for every training item is **measured on the model itself**: we run Qwen3-4B in each mode and take the mode with the best accuracy minus token cost.
 
-On the sealed test split, learned routing matches always-CoT accuracy (88.6% vs 88.1%) with **~30% fewer tokens**, and is +10.5 points over SFT routing. A reward term that penalises the *regret* of the chosen mode, against measured or probe-predicted per-mode utilities, makes RL **stable across seeds** (88.6% / 88.5%). Outcome-only RL varies from 87.0% to 80.4%, because one seed slides into under-thinking.
+On the sealed test split, learned routing matches always-CoT accuracy (88.6% vs 88.1%) with **~30% fewer tokens**, and is +10.5 points over SFT routing. A reward term that penalises the *regret* of the chosen mode, against measured or probe-predicted per-mode utilities, makes RL **stable across seeds**: 88.6% ± 0.3 over 5 seeds, against 85.7% ± 3.2 for outcome-only RL. That's +2.9 points; one-sided exact permutation test p = 0.008.
 
 On top of those labels:
 - SFT teaches the tags as switches (forced-mode obedience 100%) and as a router.
@@ -105,14 +105,18 @@ The last row is the same accuracy at ~31% fewer tokens.
 
 **Findings:**
 1. **Learned routing matches always-CoT accuracy at ~30% fewer tokens.** This holds on test (88.5% vs 88.6%, 53 vs 77 tokens) and OOD. v1's learned routing stayed 11 points below always-CoT. At λ = 5e-4 the utility gain is small (+0.011) and not significant; the token saving is the robust part.
-2. **The route-regret reward makes routing RL stable.** With it, two seeds land within 0.1 points and route identically. Without it, one of two seeds slid into under-thinking: CoT share 28%, test accuracy 80.4%. The regret term anchors the policy to what *measurably* pays off for this model.
+2. **The route-regret reward makes routing RL stable** ([5-seed table](results-v2-seeds.md)).
+   - **Test:** 88.6% (sd 0.27, range 88.2–89.0) with the regret term, against 85.7% (sd 3.25, range 80.4–88.4) without. That's +2.9 points, p = 0.008, with 12× less spread.
+   - **Outcome-only seeds trade accuracy for tokens along a line.** Each run under-thinks to a different degree.
+   - **OOD:** +1.0 point, p = 0.071. Same direction, not significant.
 3. **A hidden-state probe can replace exhaustive profiling for the regret signal.** Probe utilities and measured-profile utilities give the same result (−0.4 [−1.3, +0.4]).
 4. **The faithful and genre rewards do not help.** The true-equation rate is ~96–97% either way, and adding them costs ~0.8 points.
 5. **What RL learned** (SFT → E3b): reason on multi-step rubric rules (55% → 100%) and arithmetic (83% → 94%), and stay on one-step JEV for comparisons, knowledge MCQs and most decision items. Forced-mode obedience is 100% for every model.
 
 ## 6. Honest limits (to complete)
 
-- **Two seeds** for E2 and E3b, one for the other runs. The E2 seed collapse could be rare or common; more seeds would pin down how often it happens.
+- **Seeds:** 5 each for E2 and E3b; 1 seed for the other ablations.
+- **Latency is runtime-bound.** At batch 1, auto takes 1.74 s mean against 2.19 s for always-CoT (−20%; median −30%). The JEV path still costs 1.67 s in this runtime, which re-prefills and decodes a 16-token header.
 - **The labels are base-model labels.** They are partly stale for the SFT model (CoT accuracy 80% → 89%).
 - **The labels are base-model labels.** SFT raised CoT accuracy from 80% to 89%, so they partly describe a different model.
 - **Bev outcome and annotator tasks** (headline click-through, wine quality and the like) have an accuracy ceiling no mode can lift.
