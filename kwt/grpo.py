@@ -145,8 +145,9 @@ def build(overrides: list[str]):
 
   _cpu_mesh_patch()
   overrides = overrides + _local_tokenizer(overrides)
+  config = os.environ.get("KWT_CONFIG", "kwt_grpo.yaml")  # v2: kwt_grpo_v2.yaml
   argv = ["grpo_main", "base_config.yaml",
-          f"override_config_file={ROOT / 'configs' / 'kwt_grpo.yaml'}", *overrides]
+          f"override_config_file={ROOT / 'configs' / config}", *overrides]
   pipe = grpo_main.GrpoPipeline(argv)
   # Inherited model_config.mesh would give every role its own device slice;
   # on one chip the reference and rollout models must reuse the actor mesh.
@@ -162,7 +163,12 @@ def step_metrics(prompts, completions, rewards, advantages, **kwargs):
   from kwt import format as fmt  # pylint: disable=g-import-not-at-top
 
   opts = [json.loads(str(o)) for o in kwargs.get("options", [])]
-  parsed = [fmt.parse(c, len(o)) for c, o in zip(completions, opts)]
+  controls = kwargs.get("control")
+  if controls is not None:  # v2 traces carry a genre tag and a mode control
+    parsed = [fmt.parse_v2(c, len(o), str(k)).trace
+              for c, o, k in zip(completions, opts, controls)]
+  else:
+    parsed = [fmt.parse(c, len(o)) for c, o in zip(completions, opts)]
   answers = kwargs.get("answer", [])
   n = max(len(parsed), 1)
   modes = collections.Counter(p.first_mode or "none" for p in parsed)
@@ -210,8 +216,24 @@ def main() -> None:
                   help="tiny random Qwen3 (local CPU plumbing test, no download)")
   ap.add_argument("--dry-run", action="store_true",
                   help="build every config, the data and rewards; load no weights")
+  ap.add_argument("--config", help="configs/ file, e.g. kwt_grpo_v2.yaml (sets KWT_CONFIG)")
+  ap.add_argument("--utilities", help="v2 route_regret source: 'utilities' (mode-value "
+                  "model) or 'label' (fixed profile, E6); sets KWT_UTILITIES")
+  ap.add_argument("--reward-off", help="v2 ablation: comma-separated kwt.rewards_v2 terms "
+                  "to zero (sets KWT_REWARD_OFF), e.g. route_regret,faithful,genre")
+  ap.add_argument("--beta", help="v2: route_regret weight (sets KWT_BETA)")
+  ap.add_argument("--mesh", help="e.g. 4x1 -> model_config.mesh.shape=(4,1) (fsdp x tp); "
+                  "a flag because gcloud metadata cannot carry commas")
   ap.add_argument("overrides", nargs="*", help="Tunix key=value overrides")
-  args = ap.parse_args()
+  args = ap.parse_intermixed_args()  # VM passes overrides before and after flags
+  if args.reward_off:
+    os.environ["KWT_REWARD_OFF"] = args.reward_off
+  if args.beta:
+    os.environ["KWT_BETA"] = args.beta
+  if args.config:
+    os.environ["KWT_CONFIG"] = args.config
+  if args.utilities:
+    os.environ["KWT_UTILITIES"] = args.utilities
 
   from tunix.cli.utils import data as data_lib  # pylint: disable=g-import-not-at-top
   from tunix.rl.grpo import grpo_learner  # pylint: disable=g-import-not-at-top
@@ -221,6 +243,9 @@ def main() -> None:
   out = pathlib.Path(args.out)
   out.mkdir(parents=True, exist_ok=True)
   overrides = (SMOKE if args.smoke else []) + list(args.overrides)
+  if args.mesh:
+    fsdp, tp = args.mesh.split("x")
+    overrides.append(f"model_config.mesh.shape=({fsdp},{tp})")
   if args.random_weights:
     _random_weights_patch()
   pipe = build(overrides)

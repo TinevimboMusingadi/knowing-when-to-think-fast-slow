@@ -33,7 +33,7 @@ launch)
   deadline=$(awk "BEGIN{printf \"%d\", $(date +%s) + $hours*3600}")
   echo "max cost: $(awk "BEGIN{print $hours*$RATE}") USD ($TYPE, ${hours}h at \$$RATE/h)"
   tmp=$(mktemp -d)
-  tar --exclude=__pycache__ -czf "$tmp/code.tar.gz" kwt configs/kwt_grpo.yaml data/recovery-v2 \
+  tar --exclude=__pycache__ -czf "$tmp/code.tar.gz" kwt configs/kwt_grpo.yaml configs/kwt_grpo_v2.yaml data/recovery-v2 \
       requirements-tunix-tpu.lock .vendor/tunix/tunix .vendor/tunix/LICENSE
   ls -la "$tmp/code.tar.gz"
   gcloud storage cp "$tmp/code.tar.gz" "$gcs/code.tar.gz"
@@ -64,8 +64,13 @@ launch)
 heartbeat)
   [ -n "${NO_HEARTBEAT:-}" ] && { echo "heartbeat disabled"; exit 0; }
   echo "heartbeat for $vm every 5 min (Ctrl-C stops it; the VM then deletes itself within ~30 min)"
-  while gcloud compute tpus tpu-vm describe "$vm" --zone="$ZONE" --project="$PROJECT" \
-          --format='value(state)' >/dev/null 2>&1; do
+  # Stop only when the VM is confirmed gone (NOT_FOUND). A network blip used to
+  # end this loop, and the healthy VM would then delete itself 30 min later.
+  while true; do
+    if ! out=$(gcloud compute tpus tpu-vm describe "$vm" --zone="$ZONE" --project="$PROJECT" \
+          --format='value(state)' 2>&1); then
+      echo "$out" | grep -q "NOT_FOUND" && break
+    fi
     date +%s | gcloud storage cp - "$gcs/heartbeat" >/dev/null 2>&1 || true
     sleep 300
   done

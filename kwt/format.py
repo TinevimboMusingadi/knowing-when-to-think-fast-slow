@@ -108,3 +108,71 @@ def is_correct(parsed: Parsed, gold: str, options: list[str]) -> bool:
   if a is not None and b is not None:
     return abs(a - b) < 1e-9
   return value.strip().lower() == gold.strip().lower()
+
+
+# -- v2: genre tag + mode control --------------------------------------------
+#
+#   system prompt carries "Mode: auto|jev|direct|cot"
+#   completion:  <genre:arith><mode:cot>\n...\n<answer>42</answer>
+#
+# Under a forced mode the completion must start with that mode (the genre tag
+# is still emitted). Under auto the model picks. Genre tags are checked against
+# the item's genre by the reward; they are not needed for a valid trace.
+
+GENRES = ("decision", "compare", "rubric", "arith", "wordproblem", "knowledge")
+CONTROLS = ("auto",) + MODES
+
+SYSTEM_PROMPT_V2 = (
+    "Start with a genre tag, then exactly one mode tag.\n"
+    "Genres: " + ", ".join(f"<genre:{g}>" for g in GENRES) + ".\n"
+    "<mode:direct> answer immediately: <mode:direct>\n<answer>VALUE</answer>\n"
+    "<mode:cot> think step by step in a few short lines, then end with "
+    "<answer>VALUE</answer> or, when options are given, switch to <mode:jev>.\n"
+    "<mode:jev> pick one option letter only: <mode:jev>\nB (only when options are given).\n"
+    "Mode: {control}. If a mode is named, use it; if auto, choose the cheapest mode "
+    "that will be correct."
+)
+
+_GENRE_RE = re.compile(r"^\s*<genre:(\w+)>")
+
+
+def chat_prompt_v2(question: str, control: str = "auto") -> str:
+  if control not in CONTROLS:
+    raise ValueError(control)
+  return (
+      f"<|im_start|>system\n{SYSTEM_PROMPT_V2.format(control=control)}<|im_end|>\n"
+      f"<|im_start|>user\n{question}<|im_end|>\n"
+      "<|im_start|>assistant\n<think>\n\n</think>\n\n"
+  )
+
+
+@dataclasses.dataclass(frozen=True)
+class ParsedV2:
+  genre: str | None
+  trace: Parsed
+  obeyed: bool  # first mode matches a forced control (always True under auto)
+
+  @property
+  def valid(self) -> bool:
+    return self.trace.valid and self.obeyed
+
+
+def parse_v2(completion: str, num_options: int, control: str = "auto") -> ParsedV2:
+  m = _GENRE_RE.match(completion)
+  genre = m.group(1) if m and m.group(1) in GENRES else None
+  rest = completion[m.end():] if m else completion
+  trace = parse(rest, num_options)
+  obeyed = control == "auto" or trace.first_mode == control
+  return ParsedV2(genre, trace, obeyed)
+
+
+def is_correct_v2(parsed: Parsed, gold: str, options: list[str]) -> bool:
+  """v1 rules, plus: with options shown, an <answer> holding just a letter
+  (or "B) text") names that option. The capability profile graded letters this
+  way (kwt/data/profile.py), so rewards and eval must too."""
+  if parsed.valid and not parsed.via_jev and options and parsed.answer is not None:
+    m = re.match(r"^\s*\(?([A-F])\)?(?=[\s.):,]|$)", parsed.answer)
+    if m and LETTERS.index(m.group(1)) < len(options):
+      value = options[LETTERS.index(m.group(1))]
+      return value.strip().lower() == gold.strip().lower()
+  return is_correct(parsed, gold, options)

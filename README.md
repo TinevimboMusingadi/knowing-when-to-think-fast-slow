@@ -1,6 +1,32 @@
 # Knowing When to Switch
 
-## Active path: `kwt/` (text-mode GRPO on stock Tunix)
+## v2: measured mode labels, Qwen3-4B ([draft write-up](docs/paper-v2-draft.md), [datasheet](docs/data-v2/DATASHEET.md))
+
+v2 replaces v1's routing labels, which were assigned by construction, with labels **measured on the model**: Qwen3-4B answers every item in every mode, and the suggested mode is the one with the best accuracy minus λ·tokens. Then:
+- **SFT** teaches the mode tags as switches (`Mode: auto|jev|direct|cot`) and as a router.
+- **GRPO** trains with a verifiable reward plus a decaying *route-regret* term from a hidden-state probe.
+
+Results on the sealed test split (799 items):
+- learned routing matches always-CoT accuracy (88.5% vs 88.6%) with ~30% fewer tokens;
+- with the regret term, two RL seeds land within 0.1 points (88.6% and 88.5%), whereas outcome-only RL varied from 87.0% to 80.4% across seeds.
+
+Pipeline (each step is a module; TPU jobs go through `scripts/tpu.sh`):
+
+| step | command |
+|---|---|
+| build data (sources, dedup, splits) | `python -m kwt.data.sources`, `python -m kwt.data.build` |
+| capability profile + gold audit (TPU) | `MODULE=kwt.data.profile INPUT=data/kwt-v2/items.jsonl bash scripts/tpu.sh launch profile 7 -- --items /opt/kwt/in/items.jsonl` |
+| hidden states + CoT traces (TPU) | `MODULE=kwt.data.prep ... launch prep 4 -- --items /opt/kwt/in/items.jsonl` |
+| labels and gate report | `python -m kwt.data.labels --profile .../profile.jsonl --report --write data/kwt-v2/labelled.jsonl` |
+| mode-value probe | `python -m kwt.mode_value train --hidden .../hidden.npz --profile .../profile.jsonl --out runs/kwt/mode_value` |
+| SFT data, then SFT (TPU) | `python -m kwt.data.sft_data ...`, then `MODULE=kwt.sft ... -- --examples /opt/kwt/in/sft.jsonl --model qwen3-4b=Qwen/Qwen3-4B --steps 7083 --batch 2 --max-len 768 --completion-window 320` |
+| GRPO (v5litepod-4) | `TYPE=v5litepod-4 RATE=2.0 MODULE=kwt.grpo ... -- --config kwt_grpo_v2.yaml --init-lora /opt/kwt/in/lora.npz --skip-before --eval-rows 0 --mesh 4x1 [--reward-off faithful+genre]` |
+| eval (all controls, several adapters) | `MODULE=kwt.evaluate_v2 ... -- --items /opt/kwt/in/labelled.jsonl --splits test ood --loras e3b=/opt/kwt/in/e3b.npz ...` |
+| tables with bootstrap intervals | `python -m kwt.report_v2 --runs runs/kwt/final-a runs/kwt/final-b --split test` |
+
+`data/` is gitignored. Sources and licences are listed in [docs/data-v2/SOURCES.md](docs/data-v2/SOURCES.md).
+
+## v1 path: `kwt/` (text-mode GRPO on stock Tunix)
 
 Mode tags are text: `<mode:jev>`, `<mode:direct>` and `<mode:cot>`. A JEV decision is a single option-letter token, so stock Tunix GRPO can train it with no custom learner. At inference, [kwt/runtime.py](kwt/runtime.py) switches natively:
 - **JEV:** one forward step with logits masked to the option letters. It returns the chosen letter and its probability.

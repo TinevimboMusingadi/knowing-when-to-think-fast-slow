@@ -52,3 +52,23 @@ def test_tasks_render_and_balance():
       assert r["answer"] in opts
     if r["behavior"] == "direct":
       assert opts == []
+
+
+def test_v2_genre_and_control():
+  p = fmt.parse_v2("<genre:arith><mode:cot>\n2+2=4\n<answer>4</answer>", 0, "cot")
+  assert p.valid and p.genre == "arith" and p.trace.answer == "4"
+  assert not fmt.parse_v2("<genre:arith><mode:direct>\n<answer>4</answer>", 0, "cot").valid
+  p = fmt.parse_v2("<mode:jev>\nB", 3, "auto")  # genre tag optional for validity
+  assert p.valid and p.genre is None
+  assert fmt.parse_v2("<genre:bogus><mode:jev>\nB", 3).genre is None
+  # forced CoT with no options must end in <answer>, never a JEV hand-off
+  assert not fmt.parse_v2("<genre:arith><mode:cot>\n2+2=4\n<mode:jev>\nA", 0, "cot").valid
+  assert "Mode: cot." in fmt.chat_prompt_v2("q", "cot")
+
+
+def test_v2_letter_answers_count_with_options():
+  opts = ["low", "high"]
+  p = fmt.parse_v2("<genre:decision><mode:direct>\n<answer>B</answer>", 2, "direct").trace
+  assert fmt.is_correct_v2(p, "high", opts) and not fmt.is_correct_v2(p, "low", opts)
+  p = fmt.parse_v2("<genre:arith><mode:direct>\n<answer>B</answer>", 0).trace
+  assert not fmt.is_correct_v2(p, "high", [])  # no options: a letter is just text
