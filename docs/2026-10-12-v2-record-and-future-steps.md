@@ -1,6 +1,52 @@
-# Possible future steps (after v2)
+# v2 record and possible future steps (2026-10-12)
 
-Written 2026-10-12, after v2 finished.
+*Written 2026-10-12 (UTC). Part A records what was done on 2026-10-11 and 2026-10-12. Part B lists possible future steps.*
+
+# Part A: record of the work (2026-10-11 to 2026-10-12)
+
+## Data (Phase 1)
+- **Pool:** 6 open datasets plus procedural generators, 13,076 items in one schema (`kwt/data/`). The datasets are bev-decision, GSM8K, AQuA-RAT, ARC, OpenBookQA and CommonsenseQA.
+- **Cleaning:**
+  - schema checks rejected 2.3% of AQuA;
+  - near-duplicate removal ran before splitting;
+  - balancing bugs in our own generators were fixed.
+- **Splits:** sft 7,195 / rl 4,317 / val 300 / test 804 / ood 460.
+- **Long prompts:** 74 prompts over 512 tokens were dropped, leaving 13,002.
+- **Capability profile** (Qwen3-4B, every item in every mode, K=4) produced the suggested-mode labels.
+  - **Gates:** stability 89% and cross-fitted headroom 0.064 passed. Within-genre variance failed for the 3 JEV-dominated genres.
+- **Gold audit:**
+  - **Flagging:** Qwen3-4B with thinking flagged 276 items, which were reviewed by hand.
+  - **Error rates:** ~0.4–1.7% wrong gold in the maths and science sources, and ~10% ambiguity in CommonsenseQA.
+  - **Actions:** 2 test golds fixed and 4 items dropped, leaving **12,998 items**.
+- **Mode-value probe** on the hidden state before generation: AUROC 0.90–0.94.
+
+## Training and evaluation (Phases 2–5)
+- **SFT** (Qwen3-4B LoRA, 1 epoch, 14,168 examples, v5e-1). Forced-mode obedience is 100%; auto routing under-thinks (78.1% on test).
+- **GRPO on v5litepod-4.** A single chip runs out of memory because Tunix's train step outputs a full copy of the weights.
+  - The reward is correctness, format, a cost on correct answers only, and the **suggested-vs-actual regret**, which fades out.
+- **Sealed test results (799 items):**
+  - learned routing matches always-CoT accuracy with ~30% fewer tokens;
+  - **regret reward over 5 seeds: 88.6% ± 0.3, against 85.7% ± 3.2 for outcome-only** (p = 0.008); OOD +1.0 point (p = 0.07);
+  - probe utilities and measured-profile utilities perform the same;
+  - the faithful and genre rewards did not help.
+- **Token-price sweep:** learned routing significantly beats always-CoT from λ ≥ 0.001.
+- **Batch-1 latency:** 1.74 s against 2.19 s for always-CoT (−20% mean, −30% median).
+
+## Engineering notes for next time
+- Smoke runs caught about a dozen bugs: f32 KV cache OOMs, a literal `FINAL` copied from the CoT prompt, JEV full-vocab logits, compiled-program fragmentation, a hand-off scoring bug, and numpy reward columns.
+- us-west4-a ran out of spot capacity, so jobs moved to **us-east1-c**. Use the zone-aware launcher idea from `launch_any.sh` (scratchpad).
+- Heartbeats now exit only on NOT_FOUND (a network blip once killed one).
+- `gcloud` metadata cannot carry commas, so `grpo.py` has `--mesh 4x1` and `--reward-off a+b`.
+
+## Commits (branch `kwt-text-modes`)
+- `9ad2f04`: the v2 data pipeline, rewards and eval.
+- `4309779`: latency and price-sweep tooling.
+- `b1c63b5`: blog, figures and 5-seed results.
+- This file.
+
+Estimated total spend is ~$41 of the $50 (from run times; check the GCP bill).
+
+# Part B: possible future steps
 
 **Where v2 stands:**
 - **Accuracy and cost:** on the sealed test, learned routing matches always-CoT accuracy with ~30% fewer tokens and is ~20% faster at batch 1.
